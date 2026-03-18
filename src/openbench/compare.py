@@ -7,6 +7,7 @@ from collections import defaultdict
 from typing import Any
 
 from rich.console import Console
+from rich.panel import Panel
 from rich.table import Table
 from rich import box
 
@@ -83,6 +84,9 @@ class ResultComparator:
         # pass@k table (only when num_samples > 1)
         if exp.num_samples > 1:
             self._print_pass_at_k(result)
+
+        # Winner banner
+        self._print_winner_banner(result)
 
     # ------------------------------------------------------------------
     # Per-task output
@@ -295,6 +299,80 @@ class ResultComparator:
                 winner = "A" if p_a > p_b else "B" if p_b > p_a else "tie"
                 c.print(f"  pass@{k}: A={p_a:.2%}  B={p_b:.2%}  → {winner}")
 
+        c.print()
+
+    # ------------------------------------------------------------------
+    # Winner banner
+    # ------------------------------------------------------------------
+
+    def _print_winner_banner(self, result: ExperimentResult) -> None:
+        """Print a prominent winner panel based on aggregate metrics.
+
+        Decision hierarchy:
+          1. Success rate (primary signal)
+          2. Latency tiebreak (when success rates are equal)
+          3. All-errors guard (no winner declared when every trial failed)
+        """
+        exp = result.experiment
+        c = self._console
+
+        def collect_cost(trials: list[TrialResult]) -> float:
+            return sum(t.metrics.estimated_cost_usd for t in trials)
+
+        def collect_latency(trials: list[TrialResult]) -> float:
+            lats = [t.metrics.latency_ms for t in trials]
+            return statistics.mean(lats) if lats else 0.0
+
+        succ_a = sum(1 for t in result.trials_a if _success(t))
+        succ_b = sum(1 for t in result.trials_b if _success(t))
+        cost_a = collect_cost(result.trials_a)
+        cost_b = collect_cost(result.trials_b)
+        lat_a = collect_latency(result.trials_a)
+        lat_b = collect_latency(result.trials_b)
+        total_a = max(len(result.trials_a), 1)
+        total_b = max(len(result.trials_b), 1)
+
+        # All trials errored — no meaningful winner.
+        if succ_a == 0 and succ_b == 0:
+            c.print(Panel(
+                "[yellow]All trials errored — check your experiment config[/yellow]",
+                title="[bold]No Clear Winner[/bold]",
+                border_style="yellow",
+                expand=False,
+            ))
+            c.print()
+            return
+
+        if succ_a > succ_b:
+            winner, winner_color = "A", "green"
+            winner_name = exp.agent_a.name
+            signal = "success rate"
+        elif succ_b > succ_a:
+            winner, winner_color = "B", "blue"
+            winner_name = exp.agent_b.name
+            signal = "success rate"
+        elif lat_a <= lat_b:
+            winner, winner_color = "A", "green"
+            winner_name = exp.agent_a.name
+            signal = "latency (tied on success)"
+        else:
+            winner, winner_color = "B", "blue"
+            winner_name = exp.agent_b.name
+            signal = "latency (tied on success)"
+
+        lines = [
+            f"[bold {winner_color}]Agent {winner}: {winner_name}[/bold {winner_color}]",
+            f"[dim]Success {succ_a}/{total_a} vs {succ_b}/{total_b}  ·  "
+            f"Latency {lat_a/1000:.2f}s vs {lat_b/1000:.2f}s  ·  "
+            f"Cost ${cost_a:.5f} vs ${cost_b:.5f}[/dim]",
+            f"[dim]Decided by: {signal}[/dim]",
+        ]
+        c.print(Panel(
+            "\n".join(lines),
+            title="[bold]Recommended Winner[/bold]",
+            border_style=winner_color,
+            expand=False,
+        ))
         c.print()
 
     # ------------------------------------------------------------------
