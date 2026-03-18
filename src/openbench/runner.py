@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 import uuid
+from collections.abc import Callable
 from datetime import datetime, timezone
 
 import anyio
@@ -179,12 +180,31 @@ class ExperimentRunner:
         result = runner.run(experiment)
     """
 
-    def run(self, experiment: Experiment) -> ExperimentResult:
-        """Run the experiment synchronously and return the full result."""
-        _require_sdk()
-        return anyio.run(self._run_async, experiment)
+    def run(
+        self,
+        experiment: Experiment,
+        on_trial_done: Callable[[str, int, bool, float], None] | None = None,
+    ) -> ExperimentResult:
+        """Run the experiment synchronously and return the full result.
 
-    async def _run_async(self, experiment: Experiment) -> ExperimentResult:
+        Args:
+            experiment: The experiment to run.
+            on_trial_done: Optional callback invoked after each trial completes.
+                Signature: ``on_trial_done(agent_name, task_index, ok, cost_usd)``
+                where *ok* is ``True`` when the trial succeeded (no error) and
+                *cost_usd* is the trial's estimated cost in USD.
+                Safe to call ``rich.Progress.advance()`` from this callback.
+                Exceptions raised by the callback are caught and printed to
+                stderr so that a UI bug never cancels running trials.
+        """
+        _require_sdk()
+        return anyio.run(self._run_async, experiment, on_trial_done)
+
+    async def _run_async(
+        self,
+        experiment: Experiment,
+        on_trial_done: Callable[[str, int, bool, float], None] | None,
+    ) -> ExperimentResult:
         run_id = str(uuid.uuid4())
         started_at = datetime.now(timezone.utc).isoformat()
 
@@ -203,10 +223,12 @@ class ExperimentRunner:
                     tg.start_soon(
                         self._run_and_store,
                         experiment, experiment.agent_a, task, task_index, slot_a, s,
+                        on_trial_done,
                     )
                     tg.start_soon(
                         self._run_and_store,
                         experiment, experiment.agent_b, task, task_index, slot_b, s,
+                        on_trial_done,
                     )
 
             trials_a.extend(t for t in slot_a if t is not None)
@@ -231,9 +253,18 @@ class ExperimentRunner:
         task_index: int,
         results: list[TrialResult | None],
         slot: int,
+        on_trial_done: Callable[[str, int, bool, float], None] | None = None,
     ) -> None:
         """Run one trial and store the result at results[slot]."""
-        results[slot] = await self._run_trial(experiment, config, task, task_index)
+        trial = await self._run_trial(experiment, config, task, task_index)
+        results[slot] = trial
+        if on_trial_done is not None:
+            ok = trial.metrics.error is None and trial.metrics.stop_reason != "error"
+            try:
+                on_trial_done(config.name, task_index, ok, trial.metrics.estimated_cost_usd)
+            except Exception as exc:  # noqa: BLE001
+                import sys
+                print(f"[warn] on_trial_done raised: {exc}", file=sys.stderr)
 
     async def _run_trial(
         self,

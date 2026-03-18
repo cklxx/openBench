@@ -7,11 +7,12 @@ from typing import Any
 from rich.console import Console, Group
 from rich.live import Live
 from rich.panel import Panel
-from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.markdown import Markdown
 from rich.rule import Rule
 
 from ._sdk_call import sdk_call
+from ._tui import make_trial_callback
 from .evaluator import AutoEvaluator, ExperimentEvaluation
 from .planner import ExperimentPlanner, OptimizationStep
 from .program import ResearchProgram
@@ -37,7 +38,7 @@ class AutoResearchLoop:
     """Orchestrates the full automated research loop."""
 
     # Approximate overhead costs per LLM call (planning + evaluation)
-    _PLAN_COST_EST = 0.06    # opus call ~2k tokens
+    _PLAN_COST_EST = 0.12    # two Opus calls: initial plan + adversarial critique
     _EVAL_COST_EST = 0.003   # haiku call per trial
 
     def __init__(
@@ -81,6 +82,7 @@ class AutoResearchLoop:
             BarColumn(),
             MofNCompleteColumn(),
             TimeElapsedColumn(),
+            TimeRemainingColumn(),
             console=c,
         )
         # overall_progress: one bar across all iterations + live budget
@@ -89,6 +91,7 @@ class AutoResearchLoop:
             BarColumn(),
             MofNCompleteColumn(),
             TimeElapsedColumn(),
+            TimeRemainingColumn(),
             TextColumn("{task.fields[budget]}"),
             console=c,
         )
@@ -170,26 +173,16 @@ class AutoResearchLoop:
                     f"[yellow]Iter {iteration}[/yellow]  Running…"
                 )
                 prog_a = trial_progress.add_task(
-                    f"[green]A: {exp.agent_a.name}[/green]", total=total_trials
+                    f"[green]{exp.agent_a.name}[/green]", total=total_trials
                 )
                 prog_b = trial_progress.add_task(
-                    f"[blue]B: {exp.agent_b.name}[/blue]", total=total_trials
+                    f"[blue]{exp.agent_b.name}[/blue]", total=total_trials
                 )
-
-                def on_trial_done(agent_name: str, task_index: int, ok: bool) -> None:
-                    icon = "" if ok else " [red]✗[/red]"
-                    if agent_name == exp.agent_a.name:
-                        trial_progress.advance(prog_a)
-                        trial_progress.update(prog_a, description=(
-                            f"[green]A: {exp.agent_a.name}[/green]"
-                            f" T{task_index + 1}/{num_tasks}{icon}"
-                        ))
-                    else:
-                        trial_progress.advance(prog_b)
-                        trial_progress.update(prog_b, description=(
-                            f"[blue]B: {exp.agent_b.name}[/blue]"
-                            f" T{task_index + 1}/{num_tasks}{icon}"
-                        ))
+                on_trial_done = make_trial_callback(
+                    trial_progress, prog_a, prog_b,
+                    exp.agent_a.name, exp.agent_b.name,
+                    num_tasks,
+                )
 
                 try:
                     exp_result = self._runner.run(exp, on_trial_done=on_trial_done)

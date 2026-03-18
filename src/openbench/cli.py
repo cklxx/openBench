@@ -9,11 +9,13 @@ from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
 from rich.table import Table
 from rich import box
 
 from .storage import ResultStore
 from .compare import ResultComparator
+from ._tui import make_trial_callback
 
 app = typer.Typer(
     name="openbench",
@@ -104,11 +106,36 @@ def run_experiment(
         _console.print("[yellow]--dry-run: not executing.[/yellow]")
         raise typer.Exit(0)
 
-    _console.print("[bold]Running experiment...[/bold] (this may take a while)\n")
+    num_tasks = len(experiment.tasks)
+    num_samples = experiment.num_samples
+    total = num_tasks * num_samples
 
     runner = ExperimentRunner()
     try:
-        result = runner.run(experiment)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            BarColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            console=_console,
+            transient=False,
+        ) as progress:
+            task_a = progress.add_task(
+                f"[green]{experiment.agent_a.name}[/green]", total=total
+            )
+            task_b = progress.add_task(
+                f"[blue]{experiment.agent_b.name}[/blue]", total=total
+            )
+            cost_acc = [0.0]
+            on_trial_done = make_trial_callback(
+                progress, task_a, task_b,
+                experiment.agent_a.name, experiment.agent_b.name,
+                num_tasks, cost_accumulator=cost_acc,
+            )
+            result = runner.run(experiment, on_trial_done=on_trial_done)
+
     except ImportError as exc:
         _err_console.print(str(exc))
         raise typer.Exit(1) from exc
@@ -315,6 +342,7 @@ def auto_research(
     target: Annotated[str, typer.Option("--target", "-t", help="Optimization target: quality,cost,latency")] = "quality",
     domain: Annotated[Optional[str], typer.Option("--domain", "-d", help="Agent domain (auto-detected if not set)")] = None,
     program_file: Annotated[Optional[Path], typer.Option("--program", "-p", help="Load ResearchProgram from JSON file")] = None,
+    cn: Annotated[bool, typer.Option("--cn", help="Output final summary in Simplified Chinese.")] = False,
 ) -> None:
     """Run an automated research loop from a natural language goal.
 
@@ -360,6 +388,7 @@ def auto_research(
         max_iterations=max_iter,
         max_cost_usd=max_cost,
         console=_console,
+        lang="zh" if cn else "en",
     )
 
 
