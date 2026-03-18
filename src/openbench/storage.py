@@ -65,6 +65,8 @@ def _trial_from_dict(d: dict[str, Any]) -> TrialResult:
         metrics=_metrics_from_dict(d["metrics"]),
         timestamp=d["timestamp"],
         workdir=d["workdir"],
+        agent_input=d.get("agent_input", {}),
+        full_trace=d.get("full_trace", []),
     )
 
 

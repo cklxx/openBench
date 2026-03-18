@@ -147,6 +147,19 @@ class TrialResult:
     workdir: str
     """Temporary working directory that was used for isolation (already deleted)."""
 
+    agent_input: dict = field(default_factory=dict)
+    """Snapshot of the inputs given to the agent: system_prompt, task, model, max_turns."""
+
+    full_trace: list[dict] = field(default_factory=list)
+    """Complete execution trace.  Each entry is either an assistant turn::
+
+        {"turn": int, "content": [<block_dict>, ...], "usage": {"input_tokens": int, "output_tokens": int}}
+
+    or the final result::
+
+        {"result": str, "stop_reason": str}
+    """
+
 
 @dataclass
 class ExperimentResult:

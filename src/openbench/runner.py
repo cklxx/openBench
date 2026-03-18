@@ -120,17 +120,36 @@ async def _run_agent_async(
     error: str | None = None
     sdk_duration_ms: int = 0
     sdk_cost_usd: float = 0.0
+    full_trace: list[dict] = []
+
+    def _serialize_block(block: object) -> dict:
+        """Convert an SDK content block to a plain dict for storage."""
+        if hasattr(block, "model_dump"):
+            return block.model_dump()
+        if hasattr(block, "__dict__"):
+            return dict(block.__dict__)
+        return {"raw": str(block)}
 
     try:
         async for message in claude_agent_sdk.query(prompt=task, options=options):
             if isinstance(message, AssistantMessage):
                 num_turns += 1
+                turn_usage: dict = {}
                 for block in message.content:
                     if isinstance(block, ToolUseBlock):
                         tool_call_names.append(block.name)
                 if message.usage:
-                    input_tokens += message.usage.get("input_tokens", 0)
-                    output_tokens += message.usage.get("output_tokens", 0)
+                    turn_usage = {
+                        "input_tokens": message.usage.get("input_tokens", 0),
+                        "output_tokens": message.usage.get("output_tokens", 0),
+                    }
+                    input_tokens += turn_usage["input_tokens"]
+                    output_tokens += turn_usage["output_tokens"]
+                full_trace.append({
+                    "turn": num_turns,
+                    "content": [_serialize_block(b) for b in message.content],
+                    "usage": turn_usage,
+                })
                 if on_turn is not None:
                     text_parts = [
                         getattr(b, "text", "") for b in message.content
@@ -159,11 +178,13 @@ async def _run_agent_async(
                         input_tokens = reported_input
                     if reported_output > output_tokens:
                         output_tokens = reported_output
+                full_trace.append({"result": output, "stop_reason": stop_reason})
 
     except Exception as exc:  # noqa: BLE001
         error = str(exc)
         stop_reason = "error"
         output = ""
+        full_trace.append({"error": str(exc)})
 
     return (
         output,
@@ -175,6 +196,7 @@ async def _run_agent_async(
         error,
         sdk_duration_ms,
         sdk_cost_usd,
+        full_trace,
     )
 
 
@@ -333,8 +355,21 @@ class ExperimentRunner:
                         metrics=metrics,
                         timestamp=timestamp,
                         workdir=workdir_str,
+                        agent_input={
+                            "system_prompt": config.system_prompt,
+                            "task": task,
+                            "model": config.model,
+                            "max_turns": config.max_turns,
+                        },
+                        full_trace=[{"error": f"setup_script failed: {exc}"}],
                     )
 
+            agent_input = {
+                "system_prompt": config.system_prompt,
+                "task": task,
+                "model": config.model,
+                "max_turns": config.max_turns,
+            }
             wall_start = time.monotonic()
             (
                 output,
@@ -346,6 +381,7 @@ class ExperimentRunner:
                 error,
                 sdk_duration_ms,
                 sdk_cost_usd,
+                full_trace,
             ) = await _run_agent_async(config, task, workdir_str, on_turn=on_turn)
             wall_elapsed_ms = (time.monotonic() - wall_start) * 1000.0
 
@@ -386,4 +422,6 @@ class ExperimentRunner:
             metrics=metrics,
             timestamp=timestamp,
             workdir=workdir_str,
+            agent_input=agent_input,
+            full_trace=full_trace,
         )
