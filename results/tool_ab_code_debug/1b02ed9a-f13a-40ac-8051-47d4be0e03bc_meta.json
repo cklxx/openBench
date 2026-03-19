@@ -1,0 +1,62 @@
+{
+  "run_id": "1b02ed9a-f13a-40ac-8051-47d4be0e03bc",
+  "experiment": {
+    "name": "tool_ab_code_debug",
+    "description": "Does Bash execution access improve code debugging accuracy? Agent with Bash+Read vs Read-only on subtle Python bugs.",
+    "diff": {
+      "field": "allowed_tools",
+      "description": "Bash+Read (can execute) vs Read-only (must reason from source)"
+    },
+    "agent_a": {
+      "name": "read_only",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are a code debugger. Read the Python files in the current directory and identify the bug in each one. Explain clearly what the bug is, why it happens, and what the fix would be.",
+      "allowed_tools": [
+        "Read",
+        "Glob"
+      ],
+      "max_turns": 8,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "bash_enabled",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are a code debugger. Read and run the Python files in the current directory to identify the bug in each one. Execute the code to observe the actual behavior. Explain clearly what the bug is, why it happens, and what the fix would be.",
+      "allowed_tools": [
+        "Read",
+        "Glob",
+        "Bash"
+      ],
+      "max_turns": 8,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      "Find and explain the bug in bug1_float.py. What is the subtle issue with floating point?",
+      "Find and explain the bug in bug2_scope.py. What do the handlers actually print and why?",
+      "Find and explain the bug in bug3_mutation.py. What does Cart B contain and why?",
+      "Find and explain the bug in bug4_generator.py. What happens in Step 2 and why?",
+      "Find and explain the bug in bug5_comparison.py. What error occurs with equal priorities?"
+    ],
+    "tags": [
+      "tool-ab",
+      "code-debug",
+      "bash-vs-read"
+    ],
+    "num_samples": 1,
+    "setup_files": {
+      "bug1_float.py": "\"\"\"Calculate the total price after applying discounts.\"\"\"\n\ndef apply_discounts(prices, discounts):\n    \"\"\"Apply percentage discounts to prices and return total.\"\"\"\n    total = 0\n    for price, discount in zip(prices, discounts):\n        total += price * (1 - discount / 100)\n    return round(total, 2)\n\n# Expected: 10.00 + 8.50 + 7.20 = 25.70\n# Actual: returns 25.70 ... but what about this case?\nprices = [0.1 + 0.2, 0.3, 0.1]  # floating point\ndiscounts = [0, 0, 0]\nresult = apply_discounts(prices, discounts)\nprint(f\"Expected 0.60, got {result}\")\n# Bug: 0.1+0.2 != 0.3, so sum is 0.6000000000000001, round(_, 2) = 0.6 -- but\n# the function LOOKS correct. The real subtle issue is that the function doesn't\n# handle floating point input consistently.\n",
+      "bug2_scope.py": "\"\"\"Event handler registry with closures.\"\"\"\n\ndef make_handlers(events):\n    \"\"\"Create a handler function for each event name.\"\"\"\n    handlers = []\n    for event in events:\n        def handler(data):\n            return f\"Handling {event}: {data}\"\n        handlers.append(handler)\n    return handlers\n\nh = make_handlers([\"click\", \"hover\", \"scroll\"])\n# Expected: \"Handling click: test\", \"Handling hover: test\", \"Handling scroll: test\"\n# Actual output:\nfor i, handler in enumerate(h):\n    print(f\"Handler {i}: {handler('test')}\")\n",
+      "bug3_mutation.py": "\"\"\"Shopping cart with default argument mutation bug.\"\"\"\n\ndef add_item(item, cart=[]):\n    \"\"\"Add an item to the cart and return it.\"\"\"\n    cart.append(item)\n    return cart\n\n# User A\ncart_a = add_item(\"apple\")\nprint(f\"Cart A: {cart_a}\")  # ['apple']\n\n# User B (fresh cart expected)\ncart_b = add_item(\"banana\")\nprint(f\"Cart B: {cart_b}\")  # Expected: ['banana'], Actual: ???\n",
+      "bug4_generator.py": "\"\"\"Data pipeline with generator exhaustion bug.\"\"\"\n\ndef read_data():\n    \"\"\"Simulate reading records.\"\"\"\n    yield {\"name\": \"Alice\", \"score\": 85}\n    yield {\"name\": \"Bob\", \"score\": 92}\n    yield {\"name\": \"Charlie\", \"score\": 78}\n\ndata = read_data()\n\n# Step 1: Count records\ncount = sum(1 for _ in data)\nprint(f\"Total records: {count}\")\n\n# Step 2: Calculate average\ntotal = sum(record[\"score\"] for record in data)\navg = total / count if count > 0 else 0\nprint(f\"Average score: {avg}\")\n",
+      "bug5_comparison.py": "\"\"\"Priority queue with custom comparison.\"\"\"\n\nclass Task:\n    def __init__(self, name, priority):\n        self.name = name\n        self.priority = priority\n\n    def __lt__(self, other):\n        return self.priority < other.priority\n\nimport heapq\n\ntasks = [Task(\"email\", 3), Task(\"urgent\", 1), Task(\"meeting\", 2)]\nheapq.heapify(tasks)\n\n# Pop all tasks -- should come out in priority order\nresults = []\nwhile tasks:\n    t = heapq.heappop(tasks)\n    results.append(f\"{t.name}(p={t.priority})\")\nprint(\" -> \".join(results))\n\n# Now try with equal priorities\ntasks2 = [Task(\"a\", 1), Task(\"b\", 1), Task(\"c\", 1)]\nheapq.heapify(tasks2)\nwhile tasks2:\n    t = heapq.heappop(tasks2)\n    results.append(t.name)\n# Bug: what happens when priorities are equal and Task has no __eq__?\n"
+    },
+    "setup_script": null
+  },
+  "started_at": "2026-03-19T06:21:42.291184+00:00",
+  "finished_at": "2026-03-19T06:23:13.141961+00:00",
+  "num_tasks": 5,
+  "trials_a_count": 5,
+  "trials_b_count": 5
+}
