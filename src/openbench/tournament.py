@@ -83,7 +83,8 @@ class TournamentRunner:
                 setup_script=config.setup_script,
                 tags=config.tags + ["tournament", config.name],
             )
-            result = self._runner.run(exp)
+            # Use _run_async directly — we're already inside anyio.run()
+            result = await self._runner._run_async(exp, None, None)
             pair_results.append(result)
 
         ranking = self._rank(config.configs, pair_results)
