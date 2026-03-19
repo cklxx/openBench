@@ -253,7 +253,7 @@ class TournamentConfig:
     configs: list[AgentConfig]
     """≥2 agent configs to pit against each other."""
 
-    tasks: list[str]
+    tasks: list[str | TaskItem]
     """List of prompts / tasks to run through all agents."""
 
     num_samples: int = 1
