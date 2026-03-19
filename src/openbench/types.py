@@ -27,14 +27,74 @@ class SkillConfig:
 
 
 @dataclass
+class ModelRouter:
+    """Dynamic model selection based on task complexity.
+
+    When used as AgentConfig.model, the runner resolves the actual model
+    at runtime using multiple signals:
+    1. Estimated input tokens (prompt + system_prompt)
+    2. Task difficulty tag (if TaskItem is used)
+    3. Keyword-based complexity detection
+
+    Based on benchmarks: haiku matches sonnet on simple tasks but sonnet
+    is 2× more efficient (fewer turns/tokens) on complex ones.
+    """
+
+    default: str = "claude-haiku-4-5"
+    """Model to use for low-complexity tasks."""
+
+    upgrade: str = "claude-sonnet-4-6"
+    """Model to use for high-complexity tasks."""
+
+    threshold_tokens: int = 200
+    """Estimated input tokens above which we consider upgrading.
+    The actual decision also considers keywords and difficulty."""
+
+    upgrade_keywords: tuple[str, ...] = (
+        "implement", "write a function", "write a class", "build",
+        "refactor", "debug", "analyze", "design",
+    )
+    """Keywords in the task that suggest higher complexity."""
+
+    upgrade_difficulties: tuple[str, ...] = ("hard", "very_hard")
+    """TaskItem.difficulty values that trigger upgrade."""
+
+    def resolve(
+        self,
+        estimated_tokens: int,
+        difficulty: str | None = None,
+        task_text: str = "",
+    ) -> str:
+        """Return the model to use given task complexity signals."""
+        # Signal 1: explicit difficulty tag
+        if difficulty and difficulty in self.upgrade_difficulties:
+            return self.upgrade
+
+        # Signal 2: token count above threshold
+        if estimated_tokens >= self.threshold_tokens:
+            return self.upgrade
+
+        # Signal 3: keyword detection in prompt
+        lower = task_text.lower()
+        if any(kw in lower for kw in self.upgrade_keywords):
+            return self.upgrade
+
+        return self.default
+
+    def __str__(self) -> str:
+        return f"auto({self.default}|{self.upgrade}@{self.threshold_tokens}tok)"
+
+
+@dataclass
 class AgentConfig:
     """Configuration for one agent in an A/B test."""
 
     name: str
     """Human-readable name, e.g. 'agent_a' or 'verbose_prompt'."""
 
-    model: str
-    """Claude model identifier, e.g. 'claude-opus-4-6'."""
+    model: str | ModelRouter
+    """Claude model identifier (e.g. 'claude-opus-4-6') or a ModelRouter
+    for automatic per-task model selection."""
 
     system_prompt: str | SkillConfig | None = None
     """Optional system prompt override. Can be a plain string or a SkillConfig."""

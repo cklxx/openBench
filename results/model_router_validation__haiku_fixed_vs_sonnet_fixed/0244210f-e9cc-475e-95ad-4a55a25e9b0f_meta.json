@@ -1,0 +1,138 @@
+{
+  "run_id": "0244210f-e9cc-475e-95ad-4a55a25e9b0f",
+  "experiment": {
+    "name": "model_router_validation__haiku_fixed_vs_sonnet_fixed",
+    "description": "3-way: fixed haiku vs fixed sonnet vs auto-router. Validates that ModelRouter picks the right model per task complexity.",
+    "diff": {
+      "field": "system_prompt",
+      "description": "haiku_fixed vs sonnet_fixed"
+    },
+    "agent_a": {
+      "name": "haiku_fixed",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are a helpful assistant. Answer questions concisely and accurately. For coding tasks, write clean, working code.",
+      "allowed_tools": [
+        "Bash"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "sonnet_fixed",
+      "model": "claude-sonnet-4-6",
+      "system_prompt": "You are a helpful assistant. Answer questions concisely and accurately. For coding tasks, write clean, working code.",
+      "allowed_tools": [
+        "Bash"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      {
+        "__task__": true,
+        "prompt": "What is 17 × 23? Give just the number.",
+        "expected": "391",
+        "difficulty": "easy",
+        "tags": [
+          "simple",
+          "arithmetic"
+        ],
+        "check_fn": "\"391\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "What is the capital of France? One word answer.",
+        "expected": "Paris",
+        "difficulty": "easy",
+        "tags": [
+          "simple",
+          "factual"
+        ],
+        "check_fn": "\"Paris\" in output or \"paris\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Convert 72°F to Celsius. Round to 1 decimal. Just the number.",
+        "expected": "22.2",
+        "difficulty": "easy",
+        "tags": [
+          "simple",
+          "conversion"
+        ],
+        "check_fn": "\"22.2\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "What is the GCD of 48 and 36? Give just the number.",
+        "expected": "12",
+        "difficulty": "easy",
+        "tags": [
+          "simple",
+          "math"
+        ],
+        "check_fn": "\"12\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Write a Python function called `is_balanced(s)` that checks if a string of brackets is balanced. It should handle '()', '[]', and '{}'. The function should return True if balanced, False otherwise.\n\nExamples:\n  is_balanced('()[]{}') → True\n  is_balanced('([{}])') → True\n  is_balanced('([)]') → False\n  is_balanced('{[}') → False\n  is_balanced('') → True\n\nWrite the function and verify it works by running the examples above using Bash with python3 -c. Show the test output.",
+        "expected": "True",
+        "difficulty": "medium",
+        "tags": [
+          "complex",
+          "coding"
+        ],
+        "check_fn": "\"True\" in output and \"False\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Analyze the following data and answer the questions:\n\nMonthly sales data (units):\nJan: 120, Feb: 135, Mar: 148, Apr: 162, May: 175, Jun: 190,\nJul: 180, Aug: 195, Sep: 210, Oct: 225, Nov: 245, Dec: 260\n\n1. What is the total annual sales?\n2. What is the average monthly sales (rounded to 1 decimal)?\n3. Which month had the highest growth rate compared to previous month?\n4. What is the median monthly sales?\n\nUse Python with Bash to compute exact answers. Show calculations.",
+        "expected": "2245",
+        "difficulty": "medium",
+        "tags": [
+          "complex",
+          "data-analysis"
+        ],
+        "check_fn": "\"2245\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "A database has three tables:\n\nemployees(id, name, department_id, salary, hire_date)\ndepartments(id, name, budget)\nprojects(id, name, department_id, deadline, status)\n\nWrite SQL queries for:\n1. Find all departments where average salary exceeds $75,000\n2. List employees hired in the last year who work in departments with budget > $1M\n3. Find departments that have no active projects\n4. Calculate the total salary expenditure per department as a percentage of that department's budget\n\nWrite clean, correct SQL. Explain each query briefly.",
+        "expected": "SELECT",
+        "difficulty": "hard",
+        "tags": [
+          "complex",
+          "sql"
+        ],
+        "check_fn": "\"SELECT\" in output and \"department\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Implement a function `longest_palindrome_substring(s)` that finds the longest palindromic substring in a given string. Use the expand-around-center approach for O(n²) time complexity.\n\nTest with these cases using Bash:\n  'babad' → 'bab' or 'aba' (either is correct)\n  'cbbd' → 'bb'\n  'a' → 'a'\n  'racecar' → 'racecar'\n  'abcde' → 'a' (any single char)\n\nWrite the implementation in Python and verify all test cases pass.",
+        "expected": "palindrome",
+        "difficulty": "hard",
+        "tags": [
+          "complex",
+          "algorithm"
+        ],
+        "check_fn": "\"racecar\" in output.lower() or \"palindrom\" in output.lower()"
+      }
+    ],
+    "tags": [
+      "model-router",
+      "validation",
+      "cost-optimization",
+      "tournament",
+      "model_router_validation"
+    ],
+    "num_samples": 1,
+    "setup_files": {},
+    "setup_script": null
+  },
+  "started_at": "2026-03-19T13:09:23.812415+00:00",
+  "finished_at": "2026-03-19T13:11:17.584007+00:00",
+  "num_tasks": 8,
+  "trials_a_count": 8,
+  "trials_b_count": 8
+}

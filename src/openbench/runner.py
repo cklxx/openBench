@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 import anyio
 
-from ._utils import _resolve_system_prompt, _resolve_task, check_correctness
+from ._utils import _resolve_model, _resolve_system_prompt, _resolve_task, check_correctness
 from .isolation import isolated_workdir
 from .metrics import calculate_cost, estimate_tokens_from_text
 from .storage import ResultStore
@@ -87,6 +87,7 @@ async def _run_agent_async(
     task: str,
     workdir: str,
     on_turn: Callable[[str], None] | None = None,
+    task_difficulty: str | None = None,
 ) -> tuple[str, list[str], int, int, int, str, str | None, int, float]:
     """Run a single agent asynchronously and return raw collected data.
 
@@ -100,14 +101,16 @@ async def _run_agent_async(
              input_tokens, output_tokens,
              stop_reason, error, sdk_duration_ms, sdk_cost_usd)
     """
+    resolved_prompt = _resolve_system_prompt(config.system_prompt)
+    resolved_model = _resolve_model(config.model, task, resolved_prompt, task_difficulty)
+
     options_kwargs: dict = {
-        "model": config.model,
+        "model": resolved_model,
         "max_turns": config.max_turns,
         "cwd": workdir,
         "allowed_tools": list(config.allowed_tools),
     }
 
-    resolved_prompt = _resolve_system_prompt(config.system_prompt)
     if resolved_prompt is not None:
         options_kwargs["system_prompt"] = resolved_prompt
 
@@ -205,6 +208,7 @@ async def _run_agent_async(
         sdk_duration_ms,
         sdk_cost_usd,
         full_trace,
+        resolved_model,
     )
 
 
@@ -316,7 +320,11 @@ class ExperimentRunner:
                 except Exception:  # noqa: BLE001
                     pass
 
-        trial = await self._run_trial(experiment, config, task, task_index, on_turn=_agent_on_turn)
+        task_difficulty = task_item.difficulty if task_item else None
+        trial = await self._run_trial(
+            experiment, config, task, task_index,
+            on_turn=_agent_on_turn, task_difficulty=task_difficulty,
+        )
 
         # Attach correctness check if TaskItem has expected answer
         if task_item is not None:
@@ -353,6 +361,7 @@ class ExperimentRunner:
         task: str,
         task_index: int,
         on_turn: Callable[[str], None] | None = None,
+        task_difficulty: str | None = None,
     ) -> TrialResult:
         trial_id = str(uuid.uuid4())
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -398,13 +407,6 @@ class ExperimentRunner:
                         full_trace=[{"error": f"setup_script failed: {exc}"}],
                     )
 
-            agent_input = {
-                "system_prompt": _resolve_system_prompt(config.system_prompt),
-                "task": task,
-                "model": config.model,
-                "max_turns": config.max_turns,
-                "allowed_tools": list(config.allowed_tools),
-            }
             wall_start = time.monotonic()
             (
                 output,
@@ -417,7 +419,17 @@ class ExperimentRunner:
                 sdk_duration_ms,
                 sdk_cost_usd,
                 full_trace,
-            ) = await _run_agent_async(config, task, workdir_str, on_turn=on_turn)
+                resolved_model,
+            ) = await _run_agent_async(config, task, workdir_str, on_turn=on_turn, task_difficulty=task_difficulty)
+
+            agent_input = {
+                "system_prompt": _resolve_system_prompt(config.system_prompt),
+                "task": task,
+                "model": resolved_model,
+                "model_config": str(config.model),  # original config (may be ModelRouter)
+                "max_turns": config.max_turns,
+                "allowed_tools": list(config.allowed_tools),
+            }
             wall_elapsed_ms = (time.monotonic() - wall_start) * 1000.0
 
         latency_ms = float(sdk_duration_ms) if sdk_duration_ms > 0 else wall_elapsed_ms
@@ -431,7 +443,7 @@ class ExperimentRunner:
 
         estimated_cost_usd = (
             sdk_cost_usd if sdk_cost_usd > 0
-            else calculate_cost(config.model, input_tokens, output_tokens)
+            else calculate_cost(resolved_model, input_tokens, output_tokens)
         )
 
         metrics = TrialMetrics(

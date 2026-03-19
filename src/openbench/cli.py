@@ -537,7 +537,7 @@ def run_tournament(
     table.add_column("Avg Score", justify="right", min_width=10)
 
     for rank, (cfg, score) in enumerate(result.ranking, 1):
-        table.add_row(str(rank), cfg.name, cfg.model, f"{score:.1f}")
+        table.add_row(str(rank), cfg.name, str(cfg.model), f"{score:.1f}")
 
     _console.print(table)
 

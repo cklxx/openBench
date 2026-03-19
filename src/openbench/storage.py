@@ -14,6 +14,7 @@ from .types import (
     DiffSpec,
     Experiment,
     ExperimentResult,
+    ModelRouter,
     SkillConfig,
     TaskItem,
     TrialMetrics,
@@ -32,6 +33,13 @@ _DEFAULT_RESULTS_ROOT = Path(__file__).parent.parent.parent / "results"
 
 def _to_dict(obj: Any) -> Any:
     """Recursively convert dataclasses / lists / dicts to JSON-safe primitives."""
+    if isinstance(obj, ModelRouter):
+        return {
+            "__model_router__": True,
+            "default": obj.default,
+            "upgrade": obj.upgrade,
+            "threshold_tokens": obj.threshold_tokens,
+        }
     if isinstance(obj, SkillConfig):
         return {
             "__skill__": True,
@@ -115,9 +123,18 @@ def _agent_config_from_dict(d: dict[str, Any]) -> AgentConfig:
         system_prompt: str | SkillConfig | None = _skill_config_from_dict(raw_sp)
     else:
         system_prompt = raw_sp
+    raw_model = d.get("model", "claude-haiku-4-5")
+    if isinstance(raw_model, dict) and raw_model.get("__model_router__"):
+        model: str | ModelRouter = ModelRouter(
+            default=raw_model["default"],
+            upgrade=raw_model["upgrade"],
+            threshold_tokens=raw_model.get("threshold_tokens", 500),
+        )
+    else:
+        model = raw_model
     return AgentConfig(
         name=d["name"],
-        model=d["model"],
+        model=model,
         system_prompt=system_prompt,
         allowed_tools=d.get("allowed_tools", []),
         max_turns=d.get("max_turns", 10),

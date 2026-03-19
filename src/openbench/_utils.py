@@ -14,6 +14,27 @@ def _resolve_system_prompt(sp: Any) -> str | None:
     return sp.system_prompt
 
 
+def _resolve_model(
+    model: Any,
+    task: str,
+    system_prompt: str | None = None,
+    difficulty: str | None = None,
+) -> str:
+    """Resolve str | ModelRouter → concrete model string for the SDK.
+
+    When model is a ModelRouter, uses multiple signals:
+    - Estimated input tokens (task + system_prompt)
+    - Task difficulty tag (from TaskItem)
+    - Keyword detection in task text
+    """
+    if isinstance(model, str):
+        return model
+    # ModelRouter — multi-signal complexity estimation
+    text = task + (system_prompt or "")
+    estimated_tokens = max(1, len(text) // 4)  # ~4 chars/token heuristic
+    return model.resolve(estimated_tokens, difficulty=difficulty, task_text=task)
+
+
 def _resolve_task(task: Any) -> tuple[str, Any]:
     """Resolve str | TaskItem → (prompt_str, task_item_or_None).
 
