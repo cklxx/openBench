@@ -161,6 +161,6 @@ tournament = TournamentConfig(
             tags=["complex", "algorithm"],
         ),
     ],
-    num_samples=1,
-    tags=["model-router", "validation", "cost-optimization"],
+    num_samples=5,
+    tags=["model-router", "validation", "cost-optimization", "n5"],
 )
