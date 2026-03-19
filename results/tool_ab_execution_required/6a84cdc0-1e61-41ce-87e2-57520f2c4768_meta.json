@@ -1,0 +1,62 @@
+{
+  "run_id": "6a84cdc0-1e61-41ce-87e2-57520f2c4768",
+  "experiment": {
+    "name": "tool_ab_execution_required",
+    "description": "Bugs that REQUIRE execution to diagnose: unicode normalization, dict order, float accumulation, regex backtracking, race conditions. Bash+Read vs Read-only with max_turns=16.",
+    "diff": {
+      "field": "allowed_tools",
+      "description": "Bash+Read (can execute) vs Read-only (must reason from source)"
+    },
+    "agent_a": {
+      "name": "read_only",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are a code debugger. Read the Python files in the current directory and identify the bug in each one. Explain what the bug is, what output the code actually produces, and what the fix would be.",
+      "allowed_tools": [
+        "Read",
+        "Glob"
+      ],
+      "max_turns": 16,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "bash_enabled",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are a code debugger. Read and run the Python files in the current directory to identify the bug in each one. Execute the code to observe actual behavior, then explain the bug and the fix.",
+      "allowed_tools": [
+        "Read",
+        "Glob",
+        "Bash"
+      ],
+      "max_turns": 16,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      "Analyze bug1_unicode.py. What happens when you search for 'café' and why do the two searches give different results?",
+      "Analyze bug2_dict_order.py. Run it and explain what goes wrong with config2's positional unpacking.",
+      "Analyze bug3_accumulation.py. Does the running mean match the simple mean? When does it diverge and by how much?",
+      "Analyze bug4_regex.py. Run it and explain why some inputs are extremely slow. What is the root cause?",
+      "Analyze bug5_race.py. Run it and explain why the concurrent counter gives wrong results. What is the exact value?"
+    ],
+    "tags": [
+      "tool-ab",
+      "execution-required",
+      "runtime-bugs"
+    ],
+    "num_samples": 1,
+    "setup_files": {
+      "bug1_unicode.py": "\"\"\"Search function that fails on certain inputs.\"\"\"\n\ndef search_users(users, query):\n    \"\"\"Find users whose name matches the query (case-insensitive).\"\"\"\n    return [u for u in users if query.lower() in u[\"name\"].lower()]\n\nusers = [\n    {\"name\": \"caf\\u00e9 owner\", \"id\": 1},   # é as single codepoint U+00E9\n    {\"name\": \"cafe\\u0301 owner\", \"id\": 2},   # e + combining acute U+0301\n]\n\n# Both display as \"café owner\" but...\nresult1 = search_users(users, \"café\")  # searches with U+00E9\nresult2 = search_users(users, \"cafe\\u0301\")  # searches with combining form\n\nprint(f\"Search 'café' (NFC): found {len(result1)} users: {[u['id'] for u in result1]}\")\nprint(f\"Search 'café' (NFD): found {len(result2)} users: {[u['id'] for u in result2]}\")\nprint(f\"Are the two café strings equal? {'café' == 'cafe\\u0301'}\")\n",
+      "bug2_dict_order.py": "\"\"\"Process config with defaults — subtle insertion order bug.\"\"\"\nimport json\n\ndef merge_config(user_config, defaults):\n    \"\"\"Merge user config with defaults. User values take precedence.\"\"\"\n    result = {}\n    # Add defaults first\n    for k, v in defaults.items():\n        result[k] = v\n    # Override with user values\n    for k, v in user_config.items():\n        result[k] = v\n    return result\n\ndefaults = {\"host\": \"localhost\", \"port\": 8080, \"debug\": False, \"workers\": 4}\nuser = {\"port\": 3000, \"debug\": True}\n\nconfig = merge_config(user, defaults)\nprint(f\"Config: {json.dumps(config, indent=2)}\")\n\n# Now the subtle bug: code elsewhere expects specific key order for positional unpacking\nhost, port, debug, workers = config.values()\nprint(f\"Connecting to {host}:{port} (debug={debug}, workers={workers})\")\n\n# What if user provides keys in different order?\nuser2 = {\"debug\": True, \"port\": 3000, \"workers\": 8}\nconfig2 = merge_config(user2, defaults)\nhost2, port2, debug2, workers2 = config2.values()\nprint(f\"Config2: Connecting to {host2}:{port2} (debug={debug2}, workers={workers2})\")\n",
+      "bug3_accumulation.py": "\"\"\"Calculate statistics — accumulation error only visible at scale.\"\"\"\n\ndef running_mean(values):\n    \"\"\"Calculate running mean incrementally.\"\"\"\n    mean = 0.0\n    for i, v in enumerate(values):\n        # Incremental mean formula: mean += (v - mean) / (i + 1)\n        mean += (v - mean) / (i + 1)\n    return mean\n\ndef simple_mean(values):\n    return sum(values) / len(values)\n\n# Test 1: Small input — looks fine\nsmall = [1.0, 2.0, 3.0, 4.0, 5.0]\nprint(f\"Small test: running={running_mean(small)}, simple={simple_mean(small)}\")\nprint(f\"Match: {running_mean(small) == simple_mean(small)}\")\n\n# Test 2: Larger input with varied magnitudes\nimport random\nrandom.seed(42)\nlarge = [random.uniform(-1e6, 1e6) for _ in range(10000)]\nr = running_mean(large)\ns = simple_mean(large)\nprint(f\"Large test: running={r}, simple={s}\")\nprint(f\"Difference: {abs(r - s)}\")\nprint(f\"Match: {r == s}\")\n\n# Test 3: Pathological case — many small values then one large\npathological = [1e-10] * 10000 + [1e10]\nr2 = running_mean(pathological)\ns2 = simple_mean(pathological)\nprint(f\"Pathological: running={r2}, simple={s2}\")\nprint(f\"Relative error: {abs(r2 - s2) / max(abs(s2), 1e-15)}\")\n",
+      "bug4_regex.py": "\"\"\"Email validator — works on normal input, freezes on crafted input.\"\"\"\nimport re\nimport time\n\n# \"Robust\" email regex (actually has catastrophic backtracking)\nEMAIL_PATTERN = re.compile(r'^([a-zA-Z0-9]+[._-])*[a-zA-Z0-9]+@[a-zA-Z0-9]+([.-][a-zA-Z0-9]+)*\\.[a-zA-Z]{2,}$')\n\ndef validate_email(email):\n    \"\"\"Return True if email is valid.\"\"\"\n    return bool(EMAIL_PATTERN.match(email))\n\n# Normal inputs — works fine\ntests_normal = [\n    (\"user@example.com\", True),\n    (\"first.last@company.co.uk\", True),\n    (\"bad@\", False),\n    (\"@missing.com\", False),\n    (\"user_name-test@domain.com\", True),\n]\n\nprint(\"Normal tests:\")\nfor email, expected in tests_normal:\n    start = time.time()\n    result = validate_email(email)\n    elapsed = time.time() - start\n    status = \"PASS\" if result == expected else \"FAIL\"\n    print(f\"  {status}: {email!r} -> {result} ({elapsed:.4f}s)\")\n\n# Adversarial input — triggers catastrophic backtracking\nprint(\"\\nAdversarial test (may be slow):\")\nadversarial = \"a\" * 25 + \"@\"  # No valid TLD -> forces full backtrack\nstart = time.time()\nresult = validate_email(adversarial)\nelapsed = time.time() - start\nprint(f\"  {adversarial!r} -> {result} ({elapsed:.4f}s)\")\n\n# Even worse\nadversarial2 = \"a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a.a@\"\nstart = time.time()\nresult2 = validate_email(adversarial2)\nelapsed2 = time.time() - start\nprint(f\"  {adversarial2!r} -> {result2} ({elapsed2:.4f}s)\")\n",
+      "bug5_race.py": "\"\"\"Concurrent counter — race condition only visible when actually run.\"\"\"\nimport threading\nimport time\n\nclass Counter:\n    def __init__(self):\n        self.value = 0\n\n    def increment(self):\n        current = self.value\n        # Simulate some work (makes race condition more likely)\n        time.sleep(0.0001)\n        self.value = current + 1\n\ndef run_increments(counter, n):\n    for _ in range(n):\n        counter.increment()\n\n# Sequential — always correct\ncounter_seq = Counter()\nrun_increments(counter_seq, 100)\nprint(f\"Sequential (100 increments): {counter_seq.value}\")\n\n# Concurrent — race condition\ncounter_par = Counter()\nthreads = [threading.Thread(target=run_increments, args=(counter_par, 50)) for _ in range(2)]\nfor t in threads:\n    t.start()\nfor t in threads:\n    t.join()\nprint(f\"Concurrent (2x50 increments): {counter_par.value}\")\nprint(f\"Expected: 100, Lost updates: {100 - counter_par.value}\")\n"
+    },
+    "setup_script": null
+  },
+  "started_at": "2026-03-19T06:56:33.287980+00:00",
+  "finished_at": "2026-03-19T06:56:44.208989+00:00",
+  "num_tasks": 5,
+  "trials_a_count": 5,
+  "trials_b_count": 5
+}

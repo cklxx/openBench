@@ -1,0 +1,50 @@
+{
+  "run_id": "2c77cb59-2261-4d9b-b418-6b42829da244",
+  "experiment": {
+    "name": "domain_specific_prompts",
+    "description": "Code debugging: domain-specific 'trace execution' prompt vs universal 'name wrong intuition' prompt. Tests whether tailored prompts beat generic ones.",
+    "diff": {
+      "field": "system_prompt",
+      "description": "Domain-specific code debugging prompt vs universal metacognitive prompt"
+    },
+    "agent_a": {
+      "name": "universal_prompt",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "Before answering, write one sentence: state the most common wrong intuitive answer and explain in one phrase why it fails. Then answer the question.",
+      "allowed_tools": [],
+      "max_turns": 2,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "code_specific",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are debugging code. For every bug:\n1. TRACE: Walk through the code line by line with concrete values\n2. SPOT: Identify the exact line where behavior diverges from intent\n3. PROVE: Show a minimal input that triggers the bug\n4. FIX: Give the corrected code\nBe precise — state the actual vs expected output.",
+      "allowed_tools": [],
+      "max_turns": 2,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      "What does this code print and why?\n```python\nfuncs = []\nfor i in range(3):\n    funcs.append(lambda: i)\nprint([f() for f in funcs])\n```",
+      "This binary search has a bug. What input triggers it?\n```python\ndef binary_search(arr, target):\n    lo, hi = 0, len(arr)\n    while lo < hi:\n        mid = (lo + hi) // 2\n        if arr[mid] == target:\n            return mid\n        elif arr[mid] < target:\n            lo = mid + 1\n        else:\n            hi = mid\n    return -1\n```\nHint: it does NOT have the classic overflow bug.",
+      "What's wrong with this deduplication?\n```python\ndef dedupe(lst):\n    seen = set()\n    result = []\n    for item in lst:\n        if item not in seen:\n            seen.add(item)\n            result.append(item)\n    return result\n\ndata = [{'a': 1}, {'b': 2}, {'a': 1}]\nprint(dedupe(data))  # TypeError!\n```",
+      "This function should return the first truthy value or a default. What's the bug?\n```python\ndef first_truthy(*args, default=None):\n    for arg in args:\n        if arg:\n            return arg\n    return default\n\nresult = first_truthy(0, '', [], 42)\nprint(result)  # prints 42, correct\n\nresult2 = first_truthy(0, 0.0, False, default='fallback')\nprint(result2)  # prints 'fallback', but what about numpy?\n\nimport numpy as np\nresult3 = first_truthy(np.array([1,2,3]), default='none')\nprint(result3)  # ???\n```",
+      "What does this print? Is the sort stable?\n```python\nrecords = [\n    ('Alice', 85),\n    ('Bob', 92),\n    ('Charlie', 85),\n    ('Diana', 92),\n]\n# Sort by score descending, then by name ascending for ties\nrecords.sort(key=lambda r: (-r[1], r[0]))\nprint(records)\n\n# Now try with a different approach\nrecords2 = records.copy()\nrecords2.sort(key=lambda r: r[0])  # sort by name\nrecords2.sort(key=lambda r: -r[1])  # then by score\nprint(records2)\n# Are the results the same?\n```",
+      "Explain the output:\n```python\na = 256\nb = 256\nprint(a is b)  # True\n\nc = 257\nd = 257\nprint(c is d)  # ???\n\ne = 257; f = 257\nprint(e is f)  # ???\n```\nWhy might `c is d` and `e is f` give different results?"
+    ],
+    "tags": [
+      "domain-specific",
+      "code-debugging",
+      "prompt-design"
+    ],
+    "num_samples": 1,
+    "setup_files": {},
+    "setup_script": null
+  },
+  "started_at": "2026-03-19T07:00:33.618580+00:00",
+  "finished_at": "2026-03-19T07:03:30.969520+00:00",
+  "num_tasks": 6,
+  "trials_a_count": 6,
+  "trials_b_count": 6
+}
