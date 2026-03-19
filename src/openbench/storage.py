@@ -15,6 +15,7 @@ from .types import (
     Experiment,
     ExperimentResult,
     SkillConfig,
+    TaskItem,
     TrialMetrics,
     TrialResult,
 )
@@ -40,6 +41,17 @@ def _to_dict(obj: Any) -> Any:
             "system_prompt": obj.system_prompt,
             "required_tools": list(obj.required_tools),
         }
+    if isinstance(obj, TaskItem):
+        d: dict[str, Any] = {"__task__": True, "prompt": obj.prompt}
+        if obj.expected is not None:
+            d["expected"] = obj.expected
+        if obj.difficulty is not None:
+            d["difficulty"] = obj.difficulty
+        if obj.tags:
+            d["tags"] = obj.tags
+        if obj.check_fn is not None:
+            d["check_fn"] = obj.check_fn
+        return d
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
         # Use fields+getattr instead of dataclasses.asdict so _to_dict is called
         # on each field value (dataclasses.asdict recurses internally and bypasses us).
@@ -81,6 +93,9 @@ def _trial_from_dict(d: dict[str, Any]) -> TrialResult:
         workdir=d["workdir"],
         agent_input=d.get("agent_input", {}),
         full_trace=d.get("full_trace", []),
+        correctness=d.get("correctness"),
+        expected_answer=d.get("expected_answer"),
+        difficulty=d.get("difficulty"),
     )
 
 

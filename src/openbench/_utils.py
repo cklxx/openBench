@@ -14,6 +14,45 @@ def _resolve_system_prompt(sp: Any) -> str | None:
     return sp.system_prompt
 
 
+def _resolve_task(task: Any) -> tuple[str, Any]:
+    """Resolve str | TaskItem → (prompt_str, task_item_or_None).
+
+    Returns the prompt string and the original TaskItem (if applicable)
+    so callers can access metadata like expected answers.
+    """
+    if isinstance(task, str):
+        return task, None
+    # TaskItem
+    return task.prompt, task
+
+
+def check_correctness(output: str, expected: str | None, check_fn: str | None = None) -> bool | None:
+    """Check if agent output matches the expected answer.
+
+    Returns True/False for objective check, None if no expected answer provided.
+
+    Uses a multi-strategy approach:
+    1. If check_fn is provided, evaluate it with `output` in scope
+    2. If expected is provided, check for substring match (case-insensitive)
+    """
+    if expected is None and check_fn is None:
+        return None
+
+    if check_fn is not None:
+        try:
+            return bool(eval(check_fn, {"__builtins__": {}}, {"output": output}))  # noqa: S307
+        except Exception:  # noqa: BLE001
+            return False
+
+    if expected is not None:
+        # Normalize whitespace and case for comparison
+        norm_output = " ".join(output.lower().split())
+        norm_expected = " ".join(expected.lower().split())
+        return norm_expected in norm_output
+
+    return None
+
+
 def _parse_json(text: str) -> dict[str, Any]:
     """Extract JSON from LLM response, handling markdown code blocks."""
     text = text.strip()

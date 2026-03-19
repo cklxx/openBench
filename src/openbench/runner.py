@@ -10,13 +10,16 @@ from datetime import datetime, timezone
 
 import anyio
 
-from ._utils import _resolve_system_prompt
+from ._utils import _resolve_system_prompt, _resolve_task, check_correctness
 from .isolation import isolated_workdir
 from .metrics import calculate_cost, estimate_tokens_from_text
+from .storage import ResultStore
 from .types import (
     AgentConfig,
     Experiment,
     ExperimentResult,
+    SkillConfig,
+    TaskItem,
     TrialMetrics,
     TrialResult,
 )
@@ -222,6 +225,9 @@ class ExperimentRunner:
         result = runner.run(experiment)
     """
 
+    def __init__(self, store: ResultStore | None = None) -> None:
+        self._store = store or ResultStore()
+
     def run(
         self,
         experiment: Experiment,
@@ -254,7 +260,8 @@ class ExperimentRunner:
         trials_a: list[TrialResult] = []
         trials_b: list[TrialResult] = []
 
-        for task_index, task in enumerate(experiment.tasks):
+        for task_index, raw_task in enumerate(experiment.tasks):
+            task_prompt, task_item = _resolve_task(raw_task)
             n = experiment.num_samples
 
             # Pre-allocate result slots; filled concurrently by the task group.
@@ -265,13 +272,13 @@ class ExperimentRunner:
                 for s in range(n):
                     tg.start_soon(
                         self._run_and_store,
-                        experiment, experiment.agent_a, task, task_index, slot_a, s,
-                        on_trial_done, on_turn,
+                        experiment, experiment.agent_a, task_prompt, task_index,
+                        slot_a, s, on_trial_done, on_turn, task_item,
                     )
                     tg.start_soon(
                         self._run_and_store,
-                        experiment, experiment.agent_b, task, task_index, slot_b, s,
-                        on_trial_done, on_turn,
+                        experiment, experiment.agent_b, task_prompt, task_index,
+                        slot_b, s, on_trial_done, on_turn, task_item,
                     )
 
             trials_a.extend(t for t in slot_a if t is not None)
@@ -298,6 +305,7 @@ class ExperimentRunner:
         slot: int,
         on_trial_done: Callable[[str, int, bool, float], None] | None = None,
         on_turn: Callable[[str, int, str], None] | None = None,
+        task_item: TaskItem | None = None,
     ) -> None:
         """Run one trial and store the result at results[slot]."""
         _agent_on_turn: Callable[[str], None] | None = None
@@ -309,7 +317,27 @@ class ExperimentRunner:
                     pass
 
         trial = await self._run_trial(experiment, config, task, task_index, on_turn=_agent_on_turn)
+
+        # Attach correctness check if TaskItem has expected answer
+        if task_item is not None:
+            correct = check_correctness(
+                trial.output,
+                task_item.expected,
+                task_item.check_fn,
+            )
+            trial.correctness = correct
+            trial.expected_answer = task_item.expected
+            trial.difficulty = task_item.difficulty
+
         results[slot] = trial
+
+        # Auto-save lineage when a SkillConfig was used
+        if isinstance(config.system_prompt, SkillConfig):
+            try:
+                self._store.save_lineage_entry(config.system_prompt, trial)
+            except Exception:  # noqa: BLE001
+                pass
+
         if on_trial_done is not None:
             ok = trial.metrics.error is None and trial.metrics.stop_reason != "error"
             try:

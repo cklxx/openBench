@@ -7,6 +7,7 @@ from .types import (
     DiffSpec,
     Experiment,
     ExperimentResult,
+    TaskItem,
     TrialMetrics,
     TrialResult,
 )
@@ -16,6 +17,7 @@ __all__ = [
     "DiffSpec",
     "Experiment",
     "ExperimentResult",
+    "TaskItem",
     "TrialMetrics",
     "TrialResult",
 ]

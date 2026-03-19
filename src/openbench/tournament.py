@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 import anyio
 
 from .runner import ExperimentRunner
+from .storage import ResultStore
 from .types import (
     AgentConfig,
     DiffSpec,
@@ -28,8 +29,9 @@ class TournamentRunner:
         result = runner.run(config, confirm=False)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, store: ResultStore | None = None) -> None:
         self._runner = ExperimentRunner()
+        self._store = store or ResultStore()
 
     def estimated_cost(self, config: TournamentConfig) -> float:
         """Rough cost estimate in USD (assumes ~$0.002 per trial at Haiku pricing)."""
@@ -65,14 +67,14 @@ class TournamentRunner:
         started_at = datetime.now(timezone.utc).isoformat()
 
         pairs = list(itertools.combinations(config.configs, 2))
-        pair_results: list[ExperimentResult] = []
+        pair_results: list[ExperimentResult | None] = [None] * len(pairs)
 
-        for a, b in pairs:
+        async def _run_pair(idx: int, a: AgentConfig, b: AgentConfig) -> None:
             exp = Experiment(
                 name=f"{config.name}__{a.name}_vs_{b.name}",
                 description=config.description,
                 diff=DiffSpec(
-                    field="allowed_tools",
+                    field="system_prompt",
                     description=f"{a.name} vs {b.name}",
                 ),
                 agent_a=a,
@@ -85,14 +87,21 @@ class TournamentRunner:
             )
             # Use _run_async directly — we're already inside anyio.run()
             result = await self._runner._run_async(exp, None, None)
-            pair_results.append(result)
+            pair_results[idx] = result
+            # Auto-save each pair result to disk
+            self._store.save_result(result)
 
-        ranking = self._rank(config.configs, pair_results)
+        async with anyio.create_task_group() as tg:
+            for idx, (a, b) in enumerate(pairs):
+                tg.start_soon(_run_pair, idx, a, b)
+
+        completed: list[ExperimentResult] = [r for r in pair_results if r is not None]
+        ranking = self._rank(config.configs, completed)
         finished_at = datetime.now(timezone.utc).isoformat()
 
         return TournamentResult(
             tournament=config,
-            pairs=pair_results,
+            pairs=completed,
             ranking=ranking,
             run_id=run_id,
             started_at=started_at,
@@ -104,25 +113,22 @@ class TournamentRunner:
         configs: list[AgentConfig],
         pair_results: list[ExperimentResult],
     ) -> list[tuple[AgentConfig, float]]:
-        """Count average output length as proxy score; caller should use evaluator for real scores."""
-        # Build a win-count map using a simple heuristic: longer output = better
-        # (real scoring requires AutoEvaluator, which is async and expensive here)
+        """Rank agents by correctness (primary) then success rate (secondary).
+
+        Scoring (per pair, per agent):
+        - If correctness data available: % of trials objectively correct
+        - Else: % of trials that succeeded (no error)
+        Final score: average across all pairs the agent participated in.
+        """
         scores: dict[str, list[float]] = {c.name: [] for c in configs}
 
         for result in pair_results:
-            avg_a = sum(len(t.output) for t in result.trials_a) / max(len(result.trials_a), 1)
-            avg_b = sum(len(t.output) for t in result.trials_b) / max(len(result.trials_b), 1)
-            total = avg_a + avg_b
-            if total > 0:
-                scores[result.experiment.agent_a.name].append(avg_a / total * 100)
-                scores[result.experiment.agent_b.name].append(avg_b / total * 100)
-            else:
-                scores[result.experiment.agent_a.name].append(50.0)
-                scores[result.experiment.agent_b.name].append(50.0)
+            score_a = self._agent_score(result.trials_a)
+            score_b = self._agent_score(result.trials_b)
+            scores[result.experiment.agent_a.name].append(score_a)
+            scores[result.experiment.agent_b.name].append(score_b)
 
-        # Build config lookup by name
         config_map = {c.name: c for c in configs}
-
         ranking = [
             (config_map[name], sum(s) / max(len(s), 1))
             for name, s in scores.items()
@@ -130,3 +136,19 @@ class TournamentRunner:
         ]
         ranking.sort(key=lambda x: x[1], reverse=True)
         return ranking
+
+    @staticmethod
+    def _agent_score(trials: list) -> float:
+        """Score an agent's trials: correctness if available, else success rate."""
+        if not trials:
+            return 0.0
+        # Check if correctness data is available
+        checked = [t for t in trials if t.correctness is not None]
+        if checked:
+            return sum(1 for t in checked if t.correctness) / len(checked) * 100
+        # Fallback: success rate
+        ok = sum(
+            1 for t in trials
+            if t.metrics.stop_reason != "error" and t.metrics.error is None
+        )
+        return ok / len(trials) * 100

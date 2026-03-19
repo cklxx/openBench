@@ -148,12 +148,29 @@ class AutoEvaluator:
         m = trial.metrics
         tool_seq = ", ".join(m.tool_call_names[-50:]) if m.tool_call_names else "(none)"
         tool_efficiency_dim = '    "tool_efficiency": <0-100>,\n' if diff_field == "allowed_tools" else ""
+
+        # Reference answer section for objective evaluation
+        ref_section = ""
+        correctness_dim = ""
+        if trial.expected_answer is not None:
+            auto_correct = "CORRECT" if trial.correctness else "INCORRECT" if trial.correctness is not None else "UNKNOWN"
+            ref_section = (
+                f"\nREFERENCE ANSWER: {trial.expected_answer}\n"
+                f"AUTOMATED CORRECTNESS CHECK: {auto_correct}\n"
+                "Score accuracy based on whether the agent's answer matches the reference. "
+                "The automated check uses substring matching — use your judgment for semantic equivalence.\n"
+            )
+            correctness_dim = '    "correctness": <0 if wrong, 100 if correct, 50 if partially correct>,\n'
+
+        difficulty_section = f"\nTASK DIFFICULTY: {trial.difficulty}\n" if trial.difficulty else ""
+
         prompt = f"""You are evaluating an AI agent's response.
 
 RESEARCH OBJECTIVE: {program.objective}
 EVALUATION RUBRIC: {rubric}
 
 TASK: {trial.task}
+{ref_section}{difficulty_section}
 AGENT OUTPUT:
 {trial.output or "(no output)"}
 
@@ -173,7 +190,7 @@ Score this output. Return ONLY valid JSON (no markdown, no explanation outside J
     "task_completion": <0-100>,
     "accuracy": <0-100>,
     "conciseness": <0-100>,
-{tool_efficiency_dim}  }},
+{correctness_dim}{tool_efficiency_dim}  }},
   "reasoning": "<1-2 sentence explanation>"
 }}"""
 

@@ -1,0 +1,151 @@
+{
+  "run_id": "3841f38e-fef0-43a8-bf9f-bc2c22907241",
+  "experiment": {
+    "name": "novel_math_with_answers",
+    "description": "Novel multi-step math with verifiable answers. Tests whether minimal_trap helps on genuinely unfamiliar problems.",
+    "diff": {
+      "field": "system_prompt",
+      "description": "minimal_trap (name wrong intuition) vs baseline (no prompt)"
+    },
+    "agent_a": {
+      "name": "baseline",
+      "model": "claude-haiku-4-5",
+      "system_prompt": null,
+      "allowed_tools": [],
+      "max_turns": 2,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "minimal_trap",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "Before solving, write one sentence: state the most common wrong intuitive answer and explain in one phrase why it fails. Then solve the problem.",
+      "allowed_tools": [],
+      "max_turns": 2,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      {
+        "__task__": true,
+        "prompt": "A store sells widgets at $7.30 each. If you buy 13 widgets and pay with a $100 bill, how much change do you receive? Give the exact dollar amount.",
+        "expected": "$5.10",
+        "difficulty": "easy",
+        "tags": [
+          "arithmetic"
+        ],
+        "check_fn": "\"5.10\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "A tank fills at 3.7 liters per minute. After 23 minutes of filling, a drain opens that removes water at 1.2 liters per minute (while filling continues). How many total liters are in the tank after 40 minutes from the start? Give a number to one decimal place.",
+        "expected": "105.8",
+        "difficulty": "medium",
+        "tags": [
+          "multi-step",
+          "rates"
+        ],
+        "check_fn": "\"105.8\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "A bag has 4 red, 3 blue, and 2 green marbles. You draw 2 marbles WITHOUT replacement. What is the probability that both marbles are the same color? Express as a simplified fraction.",
+        "expected": "5/18",
+        "difficulty": "medium",
+        "tags": [
+          "probability",
+          "combinatorics"
+        ],
+        "check_fn": "\"5/18\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "You invest $2,500 at 6% annual interest compounded quarterly. After exactly 3 years, what is the total amount? Round to the nearest cent.",
+        "expected": "$2,986.50",
+        "difficulty": "medium",
+        "tags": [
+          "compound-interest"
+        ],
+        "check_fn": "\"2986.5\" in output or \"2,986.5\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Alice, Bob, and Charlie split a bill. Alice pays 3 times what Bob pays. Charlie pays $14 more than Bob. The total bill is $94. How much does each person pay? Give all three amounts.",
+        "expected": "Alice: $48, Bob: $16, Charlie: $30",
+        "difficulty": "hard",
+        "tags": [
+          "algebra",
+          "system-of-equations"
+        ],
+        "check_fn": "\"48\" in output and \"16\" in output and \"30\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "A bouncing ball is dropped from 243 cm. Each bounce reaches exactly 2/3 of the previous height. What is the TOTAL distance the ball travels (both up and down) from the moment it's dropped until it reaches the ground after the 5th bounce? Give exact answer in cm.",
+        "expected": "1033",
+        "difficulty": "hard",
+        "tags": [
+          "geometric-series"
+        ],
+        "check_fn": "\"1033\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "What is the remainder when 7^100 is divided by 13? Give a single number.",
+        "expected": "9",
+        "difficulty": "hard",
+        "tags": [
+          "number-theory",
+          "modular-arithmetic"
+        ],
+        "check_fn": "output.strip().endswith(\"9\") or \"= 9\" in output or \"is 9\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "How many 4-digit numbers (1000-9999) have all digits strictly increasing (each digit is larger than the one before it)? Give a single number.",
+        "expected": "126",
+        "difficulty": "hard",
+        "tags": [
+          "combinatorics"
+        ],
+        "check_fn": "\"126\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "In a tournament, 7 teams play round-robin (each team plays every other team exactly once). A win is worth 3 points, a draw 1 point each, a loss 0 points. After all games, the total points across all teams is 84. How many games ended in a draw? Show your work.",
+        "expected": "impossible",
+        "difficulty": "very_hard",
+        "tags": [
+          "logic",
+          "trap",
+          "impossible"
+        ],
+        "check_fn": "\"impossible\" in output.lower() or \"not possible\" in output.lower() or \"cannot\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Worker A can finish a job in 12 hours alone. Worker B can finish the same job in 18 hours alone. They start working together, but after 4 hours, Worker A leaves. How many more hours does Worker B need to finish the remaining work alone? Give an exact answer as a fraction or decimal.",
+        "expected": "8",
+        "difficulty": "very_hard",
+        "tags": [
+          "rates",
+          "multi-step"
+        ],
+        "check_fn": "\"8 hours\" in output.lower() or \"= 8\" in output or output.strip().endswith(\"8\")"
+      }
+    ],
+    "tags": [
+      "novel-math",
+      "objective-correctness",
+      "difficulty-stratified"
+    ],
+    "num_samples": 1,
+    "setup_files": {},
+    "setup_script": null
+  },
+  "started_at": "2026-03-19T07:27:27.065075+00:00",
+  "finished_at": "2026-03-19T07:29:41.382916+00:00",
+  "num_tasks": 10,
+  "trials_a_count": 10,
+  "trials_b_count": 10
+}

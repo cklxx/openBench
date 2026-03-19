@@ -1,0 +1,118 @@
+{
+  "run_id": "7e629fd4-c44f-4139-8e04-c03822b7aa31",
+  "experiment": {
+    "name": "code_fix_verifiable",
+    "description": "Agent must fix buggy Python code. Correctness verified by test cases. Domain-specific 'trace + fix' prompt vs baseline.",
+    "diff": {
+      "field": "system_prompt",
+      "description": "Code-specific fix prompt vs no prompt"
+    },
+    "agent_a": {
+      "name": "baseline",
+      "model": "claude-haiku-4-5",
+      "system_prompt": null,
+      "allowed_tools": [
+        "Read",
+        "Glob",
+        "Bash"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "code_fixer",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are fixing buggy code. For each bug:\n1. Read the file and its test suite\n2. Run the tests to see the failure\n3. Trace execution with the failing input\n4. Fix the code\n5. Run the tests again to verify your fix passes\nIMPORTANT: Your final answer must include the complete corrected function.",
+      "allowed_tools": [
+        "Read",
+        "Glob",
+        "Bash"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      {
+        "__task__": true,
+        "prompt": "Read bug_dedup.py. It's supposed to deduplicate a list while preserving order. Run test_dedup.py to see the failure. Fix the function and verify tests pass. Show the complete fixed function.",
+        "expected": "def dedupe",
+        "difficulty": "easy",
+        "tags": [
+          "list",
+          "dedup"
+        ],
+        "check_fn": "\"def dedupe\" in output and \"seen\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Read bug_flatten.py. It's supposed to recursively flatten nested lists. Run test_flatten.py to see the failure. Fix the function and verify tests pass. Show the complete fixed function.",
+        "expected": "def flatten",
+        "difficulty": "medium",
+        "tags": [
+          "recursion",
+          "list"
+        ],
+        "check_fn": "\"def flatten\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Read bug_lru.py. It implements an LRU cache but has bugs. Run test_lru.py to see the failures. Fix all bugs and verify tests pass. Show the complete fixed class.",
+        "expected": "class LRUCache",
+        "difficulty": "hard",
+        "tags": [
+          "data-structure",
+          "lru-cache"
+        ],
+        "check_fn": "\"class LRUCache\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Read bug_interval.py. It's supposed to merge overlapping intervals. Run test_interval.py to see the failure. Fix the function and verify tests pass. Show the complete fixed function.",
+        "expected": "def merge_intervals",
+        "difficulty": "medium",
+        "tags": [
+          "intervals",
+          "sorting"
+        ],
+        "check_fn": "\"def merge_intervals\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Read bug_graph.py. It implements BFS shortest path but has bugs. Run test_graph.py to see the failures. Fix and verify. Show the complete fixed function.",
+        "expected": "def bfs_shortest_path",
+        "difficulty": "hard",
+        "tags": [
+          "graph",
+          "bfs"
+        ],
+        "check_fn": "\"def bfs_shortest_path\" in output"
+      }
+    ],
+    "tags": [
+      "code-fix",
+      "verifiable",
+      "test-suite"
+    ],
+    "num_samples": 1,
+    "setup_files": {
+      "bug_dedup.py": "def dedupe(lst):\n    \"\"\"Remove duplicates, preserving order. Must work with unhashable items.\"\"\"\n    seen = set()\n    result = []\n    for item in lst:\n        if item not in seen:\n            seen.add(item)  # Bug: fails on unhashable (dicts, lists)\n            result.append(item)\n    return result\n",
+      "test_dedup.py": "from bug_dedup import dedupe\n\n# Test 1: Normal hashable items\nassert dedupe([1, 2, 3, 2, 1]) == [1, 2, 3], \"Failed on integers\"\n\n# Test 2: Strings\nassert dedupe([\"a\", \"b\", \"a\", \"c\"]) == [\"a\", \"b\", \"c\"], \"Failed on strings\"\n\n# Test 3: Unhashable items (dicts) — this is the bug trigger\nassert dedupe([{\"a\": 1}, {\"b\": 2}, {\"a\": 1}]) == [{\"a\": 1}, {\"b\": 2}], \"Failed on dicts\"\n\n# Test 4: Mixed types\nassert dedupe([1, \"1\", 1, \"1\"]) == [1, \"1\"], \"Failed on mixed types\"\n\n# Test 5: Empty\nassert dedupe([]) == [], \"Failed on empty\"\n\nprint(\"All tests passed!\")\n",
+      "bug_flatten.py": "def flatten(lst):\n    \"\"\"Recursively flatten nested lists.\"\"\"\n    result = []\n    for item in lst:\n        if isinstance(item, list):\n            result.extend(flatten(item))\n        else:\n            result.append(item)\n    return result\n\n# Bug: doesn't handle tuples or other iterables\n# Also: doesn't handle deeply nested empty lists correctly\n",
+      "test_flatten.py": "from bug_flatten import flatten\n\n# Test 1: Simple nesting\nassert flatten([1, [2, 3], [4, [5, 6]]]) == [1, 2, 3, 4, 5, 6]\n\n# Test 2: Deep nesting\nassert flatten([[[1]], [[2]], [[[3]]]]) == [1, 2, 3]\n\n# Test 3: Tuples should also be flattened\nassert flatten([1, (2, 3), [4, (5,)]]) == [1, 2, 3, 4, 5], \"Failed on tuples\"\n\n# Test 4: Empty nested\nassert flatten([[], [[]], [[], []]]) == [], \"Failed on empty nested\"\n\n# Test 5: Strings should NOT be flattened\nassert flatten([\"abc\", [\"def\"]]) == [\"abc\", \"def\"], \"Strings should not be flattened\"\n\nprint(\"All tests passed!\")\n",
+      "bug_lru.py": "from collections import OrderedDict\n\nclass LRUCache:\n    \"\"\"Least-recently-used cache with fixed capacity.\"\"\"\n\n    def __init__(self, capacity):\n        self.capacity = capacity\n        self.cache = OrderedDict()\n\n    def get(self, key):\n        \"\"\"Return value if key exists, else -1. Mark as recently used.\"\"\"\n        if key in self.cache:\n            return self.cache[key]  # Bug 1: doesn't move to end\n        return -1\n\n    def put(self, key, value):\n        \"\"\"Insert or update. Evict LRU item if at capacity.\"\"\"\n        if key in self.cache:\n            self.cache[key] = value  # Bug 2: doesn't move to end on update\n        else:\n            if len(self.cache) >= self.capacity:\n                self.cache.popitem(last=True)  # Bug 3: should be last=False for FIFO eviction\n            self.cache[key] = value\n",
+      "test_lru.py": "from bug_lru import LRUCache\n\n# Test 1: Basic put/get\ncache = LRUCache(2)\ncache.put(1, 1)\ncache.put(2, 2)\nassert cache.get(1) == 1, \"Basic get failed\"\n\n# Test 2: Eviction\ncache.put(3, 3)  # Evicts key 2 (LRU)\nassert cache.get(2) == -1, \"Key 2 should be evicted\"\nassert cache.get(3) == 3, \"Key 3 should exist\"\n\n# Test 3: Access refreshes LRU order\ncache2 = LRUCache(2)\ncache2.put(1, 1)\ncache2.put(2, 2)\ncache2.get(1)     # Access 1, making 2 the LRU\ncache2.put(3, 3)  # Should evict 2, not 1\nassert cache2.get(1) == 1, \"Key 1 should survive (recently accessed)\"\nassert cache2.get(2) == -1, \"Key 2 should be evicted (LRU)\"\n\n# Test 4: Update refreshes position\ncache3 = LRUCache(2)\ncache3.put(1, 1)\ncache3.put(2, 2)\ncache3.put(1, 10)  # Update key 1\ncache3.put(3, 3)   # Should evict 2 (LRU after 1 was updated)\nassert cache3.get(1) == 10, \"Updated value wrong\"\nassert cache3.get(2) == -1, \"Key 2 should be evicted\"\n\nprint(\"All tests passed!\")\n",
+      "bug_interval.py": "def merge_intervals(intervals):\n    \"\"\"Merge overlapping intervals. Input: list of [start, end]. Returns merged list.\"\"\"\n    if not intervals:\n        return []\n    # Bug: doesn't sort first\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        if start <= merged[-1][1]:  # Bug: should be < or <=?\n            merged[-1][1] = end  # Bug: should take max, not just replace\n        else:\n            merged.append([start, end])\n    return merged\n",
+      "test_interval.py": "from bug_interval import merge_intervals\n\n# Test 1: Basic overlap\nassert merge_intervals([[1,3],[2,6],[8,10],[15,18]]) == [[1,6],[8,10],[15,18]]\n\n# Test 2: Unsorted input\nassert merge_intervals([[3,5],[1,4]]) == [[1,5]], \"Failed on unsorted\"\n\n# Test 3: Contained interval\nassert merge_intervals([[1,10],[2,5],[3,7]]) == [[1,10]], \"Failed on contained\"\n\n# Test 4: Adjacent (touching)\nassert merge_intervals([[1,2],[2,3]]) == [[1,3]], \"Failed on adjacent\"\n\n# Test 5: No overlap\nassert merge_intervals([[1,2],[4,5]]) == [[1,2],[4,5]], \"Failed on no overlap\"\n\n# Test 6: Empty\nassert merge_intervals([]) == []\n\n# Test 7: Single\nassert merge_intervals([[1,5]]) == [[1,5]]\n\nprint(\"All tests passed!\")\n",
+      "bug_graph.py": "from collections import deque\n\ndef bfs_shortest_path(graph, start, end):\n    \"\"\"Find shortest path in unweighted graph. Returns list of nodes or None.\"\"\"\n    if start == end:\n        return [start]\n\n    visited = set()\n    queue = deque([(start, [start])])\n\n    while queue:\n        node, path = queue.popleft()\n        for neighbor in graph.get(node, []):\n            if neighbor == end:\n                return path + [neighbor]\n            if neighbor not in visited:\n                # Bug: should mark visited WHEN ENQUEUING, not when dequeuing\n                visited.add(neighbor)\n                queue.append((neighbor, path + [neighbor]))\n\n    return None\n",
+      "test_graph.py": "from bug_graph import bfs_shortest_path\n\n# Test 1: Simple path\ngraph1 = {\"A\": [\"B\", \"C\"], \"B\": [\"D\"], \"C\": [\"D\"], \"D\": []}\npath = bfs_shortest_path(graph1, \"A\", \"D\")\nassert path is not None and len(path) == 3, f\"Expected length 3, got {path}\"\n\n# Test 2: No path\ngraph2 = {\"A\": [\"B\"], \"B\": [], \"C\": [\"D\"], \"D\": []}\nassert bfs_shortest_path(graph2, \"A\", \"D\") is None, \"Should return None\"\n\n# Test 3: Same start/end\nassert bfs_shortest_path(graph1, \"A\", \"A\") == [\"A\"]\n\n# Test 4: Cycle handling\ngraph3 = {\"A\": [\"B\"], \"B\": [\"C\", \"A\"], \"C\": [\"A\", \"D\"], \"D\": []}\npath3 = bfs_shortest_path(graph3, \"A\", \"D\")\nassert path3 == [\"A\", \"B\", \"C\", \"D\"], f\"Expected A->B->C->D, got {path3}\"\n\n# Test 5: Multiple shortest paths (either is acceptable)\ngraph4 = {\"A\": [\"B\", \"C\"], \"B\": [\"D\"], \"C\": [\"D\"], \"D\": []}\npath4 = bfs_shortest_path(graph4, \"A\", \"D\")\nassert len(path4) == 3 and path4[0] == \"A\" and path4[-1] == \"D\"\n\n# Test 6: Start node also needs to be marked visited\ngraph5 = {\"A\": [\"B\", \"C\"], \"B\": [\"A\", \"D\"], \"C\": [\"A\", \"D\"], \"D\": []}\npath5 = bfs_shortest_path(graph5, \"A\", \"D\")\nassert len(path5) == 3, f\"Path too long, revisiting nodes? Got {path5}\"\n\nprint(\"All tests passed!\")\n"
+    },
+    "setup_script": null
+  },
+  "started_at": "2026-03-19T07:29:56.653915+00:00",
+  "finished_at": "2026-03-19T07:33:35.231341+00:00",
+  "num_tasks": 5,
+  "trials_a_count": 5,
+  "trials_b_count": 5
+}

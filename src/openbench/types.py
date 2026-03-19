@@ -53,6 +53,29 @@ class AgentConfig:
 
 
 @dataclass
+class TaskItem:
+    """A task with optional metadata for objective evaluation."""
+
+    prompt: str
+    """The task prompt sent to the agent."""
+
+    expected: str | None = None
+    """Reference answer for objective correctness checking.
+    When provided, the evaluator uses it to score accuracy objectively."""
+
+    difficulty: str | None = None
+    """Optional difficulty tag: 'easy', 'medium', 'hard'."""
+
+    tags: list[str] = field(default_factory=list)
+    """Task-level tags for grouping and analysis."""
+
+    check_fn: str | None = None
+    """Optional Python expression for programmatic correctness checking.
+    The expression receives `output` (str) and should return bool.
+    Example: '"5" in output and "cents" in output.lower()'"""
+
+
+@dataclass
 class DiffSpec:
     """Describes the single variable being tested between agent_a and agent_b."""
 
@@ -82,8 +105,9 @@ class Experiment:
     agent_b: AgentConfig
     """Variant agent."""
 
-    tasks: list[str]
-    """List of prompts / tasks to run through both agents."""
+    tasks: list[str | TaskItem]
+    """List of prompts / tasks to run through both agents.
+    Can be plain strings or TaskItem objects with reference answers."""
 
     tags: list[str] = field(default_factory=list)
     """Arbitrary tags for filtering/searching experiments."""
@@ -182,6 +206,15 @@ class TrialResult:
 
         {"result": str, "stop_reason": str}
     """
+
+    correctness: bool | None = None
+    """Objective correctness check result. None if no expected answer provided."""
+
+    expected_answer: str | None = None
+    """The reference answer used for correctness checking (if provided)."""
+
+    difficulty: str | None = None
+    """Task difficulty tag from TaskItem, if provided."""
 
 
 @dataclass

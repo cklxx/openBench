@@ -100,11 +100,17 @@ class ResultComparator:
     ) -> None:
         c = self._console
         task_preview = trial_a.task if len(trial_a.task) <= 70 else trial_a.task[:67] + "..."
-        c.print(f"[bold]Task {num}:[/bold] [italic]\"{task_preview}\"[/italic]")
+        difficulty = f" [{trial_a.difficulty}]" if trial_a.difficulty else ""
+        c.print(f"[bold]Task {num}:{difficulty}[/bold] [italic]\"{task_preview}\"[/italic]")
 
         def fmt_trial(trial: TrialResult, label: str, color: str) -> str:
             m = trial.metrics
             status = "[green]✓[/green]" if _success(trial) else "[red]✗[/red]"
+            # Correctness indicator
+            if trial.correctness is True:
+                status = "[green]✓ CORRECT[/green]"
+            elif trial.correctness is False:
+                status = "[red]✗ WRONG[/red]"
             latency = f"{m.latency_ms / 1000:.2f}s"
             tokens = f"{m.total_tokens:,} tokens"
             cost = f"${m.estimated_cost_usd:.5f}"
@@ -139,6 +145,9 @@ class ResultComparator:
             costs = [t.metrics.estimated_cost_usd for t in trials]
             tools = [float(t.metrics.num_tool_calls) for t in trials]
             successes = sum(1 for t in trials if _success(t))
+            # Correctness: only count if at least one trial has a verdict
+            correct_trials = [t for t in trials if t.correctness is not None]
+            correct_count = sum(1 for t in correct_trials if t.correctness)
             return {
                 "latency_ms": _avg(latencies),
                 "tokens": _avg(tokens),
@@ -146,6 +155,8 @@ class ResultComparator:
                 "tools": _avg(tools),
                 "successes": successes,
                 "total": len(trials),
+                "correct": correct_count,
+                "total_checked": len(correct_trials),
             }
 
         stats_a = collect(result.trials_a)
@@ -214,6 +225,17 @@ class ResultComparator:
             lower_is_better=False,
         )
         table.add_row("Successes", succ_a, succ_b, succ_delta)
+
+        # Correctness row (only if reference answers were provided)
+        if stats_a["total_checked"] > 0 or stats_b["total_checked"] > 0:
+            corr_a = f"{stats_a['correct']}/{stats_a['total_checked']}"
+            corr_b = f"{stats_b['correct']}/{stats_b['total_checked']}"
+            corr_delta = delta_style(
+                float(stats_a["correct"]),
+                float(stats_b["correct"]),
+                lower_is_better=False,
+            )
+            table.add_row("Correctness", corr_a, corr_b, corr_delta)
 
         c.print(table)
 
@@ -343,7 +365,23 @@ class ResultComparator:
             c.print()
             return
 
-        if succ_a > succ_b:
+        # Correctness is top signal when reference answers exist
+        corr_a = sum(1 for t in result.trials_a if t.correctness is True)
+        corr_b = sum(1 for t in result.trials_b if t.correctness is True)
+        has_correctness = any(
+            t.correctness is not None
+            for t in result.trials_a + result.trials_b
+        )
+
+        if has_correctness and corr_a > corr_b:
+            winner, winner_color = "A", "green"
+            winner_name = exp.agent_a.name
+            signal = f"correctness ({corr_a} vs {corr_b})"
+        elif has_correctness and corr_b > corr_a:
+            winner, winner_color = "B", "blue"
+            winner_name = exp.agent_b.name
+            signal = f"correctness ({corr_b} vs {corr_a})"
+        elif succ_a > succ_b:
             winner, winner_color = "A", "green"
             winner_name = exp.agent_a.name
             signal = "success rate"
