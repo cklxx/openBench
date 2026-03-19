@@ -53,6 +53,20 @@ class ExperimentPlanner:
 
     # ── private ──────────────────────────────────────────────────────────────
 
+    def _tool_diff_hint(self, diff_field: str, tools_a: list, tools_b: list) -> str:
+        if diff_field != "allowed_tools":
+            return ""
+        added = set(tools_b) - set(tools_a)
+        removed = set(tools_a) - set(tools_b)
+        hint = "\nTOOL_DIFF_HINT: Since you are testing tool differences:\n"
+        hint += "- Design tasks that REQUIRE the differing tool to be useful\n"
+        if added:
+            hint += f"- Agent B has extra tools {sorted(added)} — create tasks where these tools are genuinely helpful\n"
+        if removed:
+            hint += f"- Agent A has extra tools {sorted(removed)} — ensure tasks aren't trivially solvable without them\n"
+        hint += "- Avoid generic analytical tasks; prefer file-search, code-editing, or structured-data tasks\n"
+        return hint
+
     def _call(self, prompt: str) -> dict[str, Any]:
         text = sdk_call(prompt, model=self.model)
         return _parse_json(text)
@@ -61,7 +75,11 @@ class ExperimentPlanner:
         model = program.constraints.get("model", "claude-haiku-4-5")
         max_turns = program.constraints.get("max_turns", 3)
         allowed_tools = program.constraints.get("allowed_tools", [])
-        tools_str = json.dumps(allowed_tools)
+        tool_set_a = program.constraints.get("tool_set_a", allowed_tools)
+        tool_set_b = program.constraints.get("tool_set_b", allowed_tools)
+        tools_a_str = json.dumps(tool_set_a)
+        tools_b_str = json.dumps(tool_set_b)
+        tool_hint = self._tool_diff_hint("allowed_tools", tool_set_a, tool_set_b) if tool_set_a != tool_set_b else ""
 
         return f"""You are designing the FIRST A/B experiment in an automated research loop.
 
@@ -70,9 +88,10 @@ DOMAIN: {program.domain}
 OPTIMIZATION TARGETS (priority order): {', '.join(program.optimization_targets)}
 MODEL TO USE FOR AGENTS: {model}
 MAX TURNS: {max_turns}
-ALLOWED TOOLS: {tools_str}
+AGENT A TOOLS: {tools_a_str}
+AGENT B TOOLS: {tools_b_str}
 CONTEXT: {program.context or 'None'}
-
+{tool_hint}
 Design ONE A/B experiment where:
 - agent_a = conservative baseline (default/simple configuration)
 - agent_b = variant testing ONE specific hypothesis
@@ -104,13 +123,13 @@ Return ONLY valid JSON (no markdown wrapper):
   "agent_a": {{
     "name": "baseline",
     "system_prompt": null,
-    "allowed_tools": {tools_str},
+    "allowed_tools": {tools_a_str},
     "max_turns": {max_turns}
   }},
   "agent_b": {{
     "name": "variant_v1",
     "system_prompt": "<the specific system prompt to test>",
-    "allowed_tools": {tools_str},
+    "allowed_tools": {tools_b_str},
     "max_turns": {max_turns}
   }},
   "tasks": ["<task1>", "<task2>", "<task3>"]
@@ -146,7 +165,14 @@ Return ONLY valid JSON (no markdown wrapper):
             best = last_step.experiment.agent_b
         else:
             best = last_step.experiment.agent_a
-        best_sp = repr(best.system_prompt) if best.system_prompt else "null"
+        from ._utils import _resolve_system_prompt
+        best_sp_str = _resolve_system_prompt(best.system_prompt)
+        best_sp = repr(best_sp_str) if best_sp_str else "null"
+        best_tools_str = json.dumps(list(best.allowed_tools))
+
+        # Detect if we're testing tools and add hint
+        diff_field = last_step.experiment.diff.field
+        tool_hint = self._tool_diff_hint(diff_field, list(best.allowed_tools), list(best.allowed_tools))
 
         return f"""You are proposing the NEXT experiment in an automated research loop.
 
@@ -155,13 +181,14 @@ OPTIMIZATION TARGETS (priority order): {', '.join(program.optimization_targets)}
 MODEL: {model}
 MAX TURNS: {max_turns}
 ALLOWED TOOLS: {tools_str}
-
+{tool_hint}
 EXPERIMENT HISTORY:
 {chr(10).join(history_text)}
 
 CURRENT BEST CONFIG:
   name: {best.name}
   system_prompt: {best_sp}
+  allowed_tools: {best_tools_str}
 
 Based on what we've learned, propose the next experiment.
 The current best config becomes agent_a (baseline).
@@ -172,6 +199,7 @@ Rules:
 - Don't repeat a hypothesis already tested
 - Build on what worked (keep winning elements, try something new)
 - If scores are converging (both above 85 and delta < 3pts for 2 steps), set converged=true
+- Specify allowed_tools independently for each agent (they may differ if testing tool configurations)
 
 Return ONLY valid JSON:
 {{
@@ -184,7 +212,7 @@ Return ONLY valid JSON:
   "agent_a": {{
     "name": "{best.name}_baseline",
     "system_prompt": {best_sp},
-    "allowed_tools": {tools_str},
+    "allowed_tools": {best_tools_str},
     "max_turns": {max_turns}
   }},
   "agent_b": {{
@@ -278,13 +306,14 @@ Return ONLY valid JSON:
         # Use model from constraints if not in data
         agent_a_data = data["agent_a"]
         agent_b_data = data["agent_b"]
-        # If a baseline was provided, carry it forward but allow planner to rename it
+        # If a baseline was provided, carry it forward but allow planner to rename it.
+        # Read allowed_tools from per-agent JSON data so tool A/B diffs are preserved.
         if baseline is not None:
             agent_a = AgentConfig(
                 name=agent_a_data.get("name", baseline.name),
                 model=baseline.model,
                 system_prompt=baseline.system_prompt,
-                allowed_tools=baseline.allowed_tools,
+                allowed_tools=agent_a_data.get("allowed_tools", list(baseline.allowed_tools)),
                 max_turns=baseline.max_turns,
                 extra_options=baseline.extra_options,
             )

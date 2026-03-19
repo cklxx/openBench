@@ -422,6 +422,126 @@ def save_program(
     _console.print(f"[dim]Run with:[/dim] openbench research --program {output}")
 
 
+@app.command("lineage")
+def show_lineage(
+    skill_name: Annotated[
+        str,
+        typer.Argument(help="Skill name to show lineage for."),
+    ],
+) -> None:
+    """Show skill version history and performance."""
+    store = _get_store()
+    entries = store.load_lineage(skill_name)
+    if not entries:
+        _console.print(f"[yellow]No lineage found for skill '{skill_name}'.[/yellow]")
+        raise typer.Exit(0)
+
+    table = Table(
+        title=f"Lineage: {skill_name}",
+        box=box.SIMPLE_HEAVY,
+        header_style="bold",
+    )
+    table.add_column("Version", style="cyan", min_width=12)
+    table.add_column("Experiment", min_width=25)
+    table.add_column("Timestamp", min_width=20)
+    table.add_column("Score", justify="right", min_width=8)
+    table.add_column("Stop Reason", min_width=12)
+
+    for entry in entries:
+        score_str = f"{entry['score']:.1f}" if entry.get("score") is not None else "-"
+        table.add_row(
+            entry.get("version", "-"),
+            entry.get("experiment_name", "-"),
+            entry.get("timestamp", "-")[:19].replace("T", " "),
+            score_str,
+            entry.get("stop_reason", "-"),
+        )
+
+    _console.print(table)
+
+
+@app.command("tournament")
+def run_tournament(
+    tournament_file: Annotated[
+        Path,
+        typer.Argument(help="Path to a Python file defining a `tournament` variable (TournamentConfig)."),
+    ],
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", help="Print tournament details without running it."),
+    ] = False,
+    yes: Annotated[
+        bool,
+        typer.Option("--yes", "-y", help="Skip confirmation prompt."),
+    ] = False,
+) -> None:
+    """Run a multi-config tournament from a Python tournament file."""
+    from .tournament import TournamentRunner
+
+    path = tournament_file.resolve()
+    if not path.exists():
+        _err_console.print(f"File not found: {path}")
+        raise typer.Exit(1)
+
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("_openbench_tournament", str(path))
+    if spec is None or spec.loader is None:
+        _err_console.print(f"Cannot load module from: {path}")
+        raise typer.Exit(1)
+    module = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(module)  # type: ignore[union-attr]
+    except Exception as exc:
+        _err_console.print(f"Error loading tournament file: {exc}")
+        raise typer.Exit(1) from exc
+
+    if not hasattr(module, "tournament"):
+        _err_console.print(
+            f"Tournament file must define a top-level `tournament` variable. None found in {path}"
+        )
+        raise typer.Exit(1)
+
+    config = module.tournament
+
+    _console.rule(f"[bold cyan]OpenBench Tournament: {config.name}[/bold cyan]")
+    _console.print(f"[dim]{config.description}[/dim]")
+    _console.print(f"  Configs: {len(config.configs)}")
+    for c in config.configs:
+        _console.print(f"    - [green]{c.name}[/green] ({c.model})")
+    _console.print(f"  Tasks:   {len(config.tasks)}")
+    _console.print()
+
+    if dry_run:
+        _console.print("[yellow]--dry-run: not executing.[/yellow]")
+        raise typer.Exit(0)
+
+    runner = TournamentRunner()
+    try:
+        result = runner.run(config, confirm=not yes)
+    except RuntimeError as exc:
+        _err_console.print(str(exc))
+        raise typer.Exit(1) from exc
+    except Exception as exc:
+        _err_console.print(f"Tournament failed: {exc}")
+        raise typer.Exit(1) from exc
+
+    _console.rule("[bold green]Tournament Complete[/bold green]")
+    _console.print(f"Run ID: [cyan]{result.run_id}[/cyan]")
+    _console.print(f"Pairs run: {len(result.pairs)}")
+    _console.print()
+
+    table = Table(title="Leaderboard", box=box.SIMPLE_HEAVY, header_style="bold")
+    table.add_column("Rank", justify="right", min_width=5)
+    table.add_column("Config", style="cyan", min_width=20)
+    table.add_column("Model", min_width=20)
+    table.add_column("Avg Score", justify="right", min_width=10)
+
+    for rank, (cfg, score) in enumerate(result.ranking, 1):
+        table.add_row(str(rank), cfg.name, cfg.model, f"{score:.1f}")
+
+    _console.print(table)
+
+
 @app.command("tui")
 def launch_tui() -> None:
     """Launch the interactive history browser (requires: pip install textual)."""

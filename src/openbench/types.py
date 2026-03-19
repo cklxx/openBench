@@ -7,6 +7,26 @@ from typing import Any
 
 
 @dataclass
+class SkillConfig:
+    """A named, versioned agent skill with its own system prompt and required tools."""
+
+    name: str
+    """Skill identifier, e.g. 'file_search_v2'."""
+
+    version: str
+    """Version string, e.g. '1.0.0' or '2024-03-19'."""
+
+    description: str
+    """Human-readable description of what this skill does."""
+
+    system_prompt: str
+    """The system prompt that implements this skill."""
+
+    required_tools: list[str] = field(default_factory=list)
+    """Tool names required by this skill."""
+
+
+@dataclass
 class AgentConfig:
     """Configuration for one agent in an A/B test."""
 
@@ -16,8 +36,8 @@ class AgentConfig:
     model: str
     """Claude model identifier, e.g. 'claude-opus-4-6'."""
 
-    system_prompt: str | None = None
-    """Optional system prompt override."""
+    system_prompt: str | SkillConfig | None = None
+    """Optional system prompt override. Can be a plain string or a SkillConfig."""
 
     allowed_tools: list[str] = field(default_factory=list)
     """Tool names the agent may use, e.g. ['Read', 'Bash', 'Glob']."""
@@ -27,6 +47,9 @@ class AgentConfig:
 
     extra_options: dict[str, Any] = field(default_factory=dict)
     """Additional ClaudeAgentOptions fields passed as kwargs."""
+
+    mcp_servers: list[dict] | None = None
+    """Optional MCP server configurations to pass to the SDK."""
 
 
 @dataclass
@@ -182,3 +205,55 @@ class ExperimentResult:
 
     finished_at: str
     """ISO-8601 timestamp when the run finished."""
+
+
+@dataclass
+class TournamentConfig:
+    """Defines an N-way round-robin tournament among multiple agent configs."""
+
+    name: str
+    """Unique tournament name."""
+
+    description: str
+    """What this tournament is measuring."""
+
+    configs: list[AgentConfig]
+    """≥2 agent configs to pit against each other."""
+
+    tasks: list[str]
+    """List of prompts / tasks to run through all agents."""
+
+    num_samples: int = 1
+    """Number of independent trials per (agent, task) pair."""
+
+    setup_files: dict[str, str] = field(default_factory=dict)
+    """Files to write into each trial's isolated working directory."""
+
+    setup_script: str | None = None
+    """Optional shell command run before each agent starts."""
+
+    tags: list[str] = field(default_factory=list)
+    """Arbitrary tags for filtering."""
+
+
+@dataclass
+class TournamentResult:
+    """Complete results for an N-way tournament."""
+
+    tournament: TournamentConfig
+    """The tournament configuration."""
+
+    pairs: list[ExperimentResult]
+    """One ExperimentResult per head-to-head pair."""
+
+    ranking: list[tuple[AgentConfig, float]]
+    """(config, avg_score) sorted descending by score."""
+
+    run_id: str
+    """UUID for this specific tournament run."""
+
+    started_at: str
+    """ISO-8601 timestamp when the tournament started."""
+
+    finished_at: str
+    """ISO-8601 timestamp when the tournament finished."""

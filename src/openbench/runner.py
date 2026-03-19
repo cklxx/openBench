@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import anyio
 
+from ._utils import _resolve_system_prompt
 from .isolation import isolated_workdir
 from .metrics import calculate_cost, estimate_tokens_from_text
 from .types import (
@@ -103,8 +104,12 @@ async def _run_agent_async(
         "allowed_tools": list(config.allowed_tools),
     }
 
-    if config.system_prompt is not None:
-        options_kwargs["system_prompt"] = config.system_prompt
+    resolved_prompt = _resolve_system_prompt(config.system_prompt)
+    if resolved_prompt is not None:
+        options_kwargs["system_prompt"] = resolved_prompt
+
+    if config.mcp_servers is not None:
+        options_kwargs["mcp_servers"] = config.mcp_servers
 
     for k, v in (config.extra_options or {}).items():
         options_kwargs[k] = v
@@ -356,19 +361,21 @@ class ExperimentRunner:
                         timestamp=timestamp,
                         workdir=workdir_str,
                         agent_input={
-                            "system_prompt": config.system_prompt,
+                            "system_prompt": _resolve_system_prompt(config.system_prompt),
                             "task": task,
                             "model": config.model,
                             "max_turns": config.max_turns,
+                            "allowed_tools": list(config.allowed_tools),
                         },
                         full_trace=[{"error": f"setup_script failed: {exc}"}],
                     )
 
             agent_input = {
-                "system_prompt": config.system_prompt,
+                "system_prompt": _resolve_system_prompt(config.system_prompt),
                 "task": task,
                 "model": config.model,
                 "max_turns": config.max_turns,
+                "allowed_tools": list(config.allowed_tools),
             }
             wall_start = time.monotonic()
             (
@@ -388,7 +395,7 @@ class ExperimentRunner:
         latency_ms = float(sdk_duration_ms) if sdk_duration_ms > 0 else wall_elapsed_ms
 
         if input_tokens == 0 and output_tokens == 0:
-            input_text = task + (config.system_prompt or "")
+            input_text = task + (_resolve_system_prompt(config.system_prompt) or "")
             input_tokens = estimate_tokens_from_text(input_text)
             output_tokens = estimate_tokens_from_text(output)
 

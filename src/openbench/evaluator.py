@@ -1,7 +1,7 @@
 """AutoEvaluator — LLM-as-judge evaluation for A/B agent experiments."""
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 import anyio
@@ -72,6 +72,10 @@ class AutoEvaluator:
         """
         return anyio.run(self._evaluate_async, result, program)
 
+    @staticmethod
+    def _diff_field(result: ExperimentResult) -> str | None:
+        return result.experiment.diff.field if result.experiment.diff else None
+
     # ── private ──────────────────────────────────────────────────────────────
 
     async def _evaluate_async(
@@ -79,7 +83,8 @@ class AutoEvaluator:
         result: ExperimentResult,
         program: ResearchProgram,
     ) -> ExperimentEvaluation:
-        rubric = self.rubric or program.eval_rubric or self._default_rubric(program)
+        diff_field = self._diff_field(result)
+        rubric = self.rubric or program.eval_rubric or self._default_rubric(program, diff_field)
         sem = anyio.Semaphore(self._MAX_CONCURRENT)
 
         evals_a: list[TaskEvaluation | None] = [None] * len(result.trials_a)
@@ -91,7 +96,7 @@ class AutoEvaluator:
             idx: int,
         ) -> None:
             async with sem:
-                out[idx] = await self._eval_trial_async(trial, program, rubric)
+                out[idx] = await self._eval_trial_async(trial, program, rubric, diff_field)
 
         async with anyio.create_task_group() as tg:
             for i, trial in enumerate(result.trials_a):
@@ -121,22 +126,28 @@ class AutoEvaluator:
             recommendation=verdict["recommendation"],
         )
 
-    def _default_rubric(self, program: ResearchProgram) -> str:
+    def _default_rubric(self, program: ResearchProgram, diff_field: str | None = None) -> str:
         targets = ", ".join(program.optimization_targets)
-        return (
+        base = (
             f"Evaluate based on: {targets}. "
             "Score task_completion (did the agent finish the task?), "
             "accuracy (is the output correct/helpful?), "
             "and conciseness (is the output appropriately brief?)."
         )
+        if diff_field == "allowed_tools":
+            base += " Also score tool_efficiency: did the agent pick appropriate tools and avoid wasteful calls?"
+        return base
 
     async def _eval_trial_async(
         self,
         trial: TrialResult,
         program: ResearchProgram,
         rubric: str,
+        diff_field: str | None = None,
     ) -> TaskEvaluation:
         m = trial.metrics
+        tool_seq = ", ".join(m.tool_call_names[-50:]) if m.tool_call_names else "(none)"
+        tool_efficiency_dim = '    "tool_efficiency": <0-100>,\n' if diff_field == "allowed_tools" else ""
         prompt = f"""You are evaluating an AI agent's response.
 
 RESEARCH OBJECTIVE: {program.objective}
@@ -151,6 +162,7 @@ PERFORMANCE METRICS:
 - Tokens: {m.total_tokens}
 - Cost: ${m.estimated_cost_usd:.5f}
 - Tool calls: {m.num_tool_calls}
+- Tool call sequence (last 50): {tool_seq}
 - Stop reason: {m.stop_reason}
 {"- ERROR: " + m.error if m.error else ""}
 
@@ -160,8 +172,8 @@ Score this output. Return ONLY valid JSON (no markdown, no explanation outside J
   "dimensions": {{
     "task_completion": <0-100>,
     "accuracy": <0-100>,
-    "conciseness": <0-100>
-  }},
+    "conciseness": <0-100>,
+{tool_efficiency_dim}  }},
   "reasoning": "<1-2 sentence explanation>"
 }}"""
 

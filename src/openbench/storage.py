@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import uuid
-from datetime import datetime, timezone
+import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -14,9 +14,12 @@ from .types import (
     DiffSpec,
     Experiment,
     ExperimentResult,
+    SkillConfig,
     TrialMetrics,
     TrialResult,
 )
+
+_LINEAGE_LOCK = threading.Lock()
 
 # Default results root relative to this file's package location.
 _DEFAULT_RESULTS_ROOT = Path(__file__).parent.parent.parent / "results"
@@ -28,8 +31,19 @@ _DEFAULT_RESULTS_ROOT = Path(__file__).parent.parent.parent / "results"
 
 def _to_dict(obj: Any) -> Any:
     """Recursively convert dataclasses / lists / dicts to JSON-safe primitives."""
+    if isinstance(obj, SkillConfig):
+        return {
+            "__skill__": True,
+            "name": obj.name,
+            "version": obj.version,
+            "description": obj.description,
+            "system_prompt": obj.system_prompt,
+            "required_tools": list(obj.required_tools),
+        }
     if dataclasses.is_dataclass(obj) and not isinstance(obj, type):
-        return {k: _to_dict(v) for k, v in dataclasses.asdict(obj).items()}
+        # Use fields+getattr instead of dataclasses.asdict so _to_dict is called
+        # on each field value (dataclasses.asdict recurses internally and bypasses us).
+        return {f.name: _to_dict(getattr(obj, f.name)) for f in dataclasses.fields(obj)}
     if isinstance(obj, list):
         return [_to_dict(i) for i in obj]
     if isinstance(obj, dict):
@@ -70,14 +84,30 @@ def _trial_from_dict(d: dict[str, Any]) -> TrialResult:
     )
 
 
+def _skill_config_from_dict(d: dict[str, Any]) -> SkillConfig:
+    return SkillConfig(
+        name=d["name"],
+        version=d["version"],
+        description=d["description"],
+        system_prompt=d["system_prompt"],
+        required_tools=d.get("required_tools", []),
+    )
+
+
 def _agent_config_from_dict(d: dict[str, Any]) -> AgentConfig:
+    raw_sp = d.get("system_prompt")
+    if isinstance(raw_sp, dict) and raw_sp.get("__skill__"):
+        system_prompt: str | SkillConfig | None = _skill_config_from_dict(raw_sp)
+    else:
+        system_prompt = raw_sp
     return AgentConfig(
         name=d["name"],
         model=d["model"],
-        system_prompt=d.get("system_prompt"),
+        system_prompt=system_prompt,
         allowed_tools=d.get("allowed_tools", []),
         max_turns=d.get("max_turns", 10),
         extra_options=d.get("extra_options", {}),
+        mcp_servers=d.get("mcp_servers"),
     )
 
 
@@ -258,6 +288,46 @@ class ResultStore:
             for d in self.results_root.iterdir()
             if d.is_dir() and any(d.glob("*_meta.json"))
         )
+
+    def save_lineage_entry(
+        self,
+        skill: SkillConfig,
+        trial: TrialResult,
+        score: float | None = None,
+    ) -> None:
+        """Append one lineage record when a SkillConfig is used in a trial."""
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", skill.name)
+        lineage_dir = self.results_root / "_lineage"
+        lineage_dir.mkdir(parents=True, exist_ok=True)
+        path = lineage_dir / f"{safe_name}.jsonl"
+        entry = {
+            "skill_name": skill.name,
+            "version": skill.version,
+            "experiment_name": trial.experiment_name,
+            "trial_id": trial.trial_id,
+            "timestamp": trial.timestamp,
+            "score": score,
+            "stop_reason": trial.metrics.stop_reason,
+        }
+        with _LINEAGE_LOCK:
+            with path.open("a") as f:
+                f.write(json.dumps(entry) + "\n")
+
+    def load_lineage(self, skill_name: str) -> list[dict]:
+        """Load all lineage records for a skill."""
+        safe_name = re.sub(r"[^a-zA-Z0-9_-]", "_", skill_name)
+        path = self.results_root / "_lineage" / f"{safe_name}.jsonl"
+        if not path.exists():
+            return []
+        entries = []
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return entries
 
     def list_runs(self, experiment_name: str) -> list[dict[str, Any]]:
         """Return summary dicts for all runs of *experiment_name*."""
