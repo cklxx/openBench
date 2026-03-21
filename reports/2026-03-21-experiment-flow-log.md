@@ -544,16 +544,49 @@ Guidance **hurt** on the 3-file task. The codebase map consumed attention withou
 - **Result:** 0/30 vs 0/30 — max_turns=4 too tight for multi-file tasks.
 - **Behavioral difference:** Guided made 2.2 edits vs unguided 1.2 edits. The guidance DID redirect effort toward fixes, but 4 turns is below the minimum viable budget for multi-file debugging.
 
-### Key Findings
+### v4: Properly Calibrated — Misleading Errors (Breakthrough)
 
-1. **Navigation guidance has marginal effect (+14%, not statistically significant)**
-2. **Models navigate efficiently without help** — error tracebacks provide sufficient direction
-3. **Guidance can hurt on small codebases** — attention overhead > navigation savings
-4. **Critical contrast with Experiments 1 & 2:** Behavioral change (how to act) >> Informational change (where to look)
+v1-v3 failed at calibration. v4 fixed this with:
+- ALL tasks 5-6 files where **error tracebacks mislead to wrong file**
+- max_turns=8, n=8 per task
+- Guided prompt: ~315 tokens, detailed per-task bug descriptions
 
-### Methodology Lesson
+**Result: Guidance HURTS!** Unguided 12/32 (38%) vs Guided 7/32 (22%) = **-42%**
 
-This experiment confirmed the meta-pattern: **the powerful lever is behavioral instruction, not informational context.** Compute allocation (+800%) and error recovery (+∞%) both changed what the agent DOES. Context efficiency only changed what the agent KNOWS — and the agent already knew enough from reading error messages.
+Per-task: guidance hurt on 3/4 tasks, tied on 1. No task improved.
+
+**Diagnosis:** The guided prompt contained info for ALL 4 tasks (~315 tokens), but each trial only works on 1 task. 75% of the prompt is noise about other tasks' bugs. But is it the noise, or is guidance fundamentally harmful?
+
+### v5: Focused Guidance — No Noise (Confirmation)
+
+Reduced prompt to ~100 tokens: just file+bug per task, 1 line each.
+
+**Result: STILL hurts!** Unguided 19/32 (59%) vs Guided 12/32 (38%) = **-37%**
+
+Per-task: guidance hurt on ALL 4 tasks (delta: -3, -2, -1, -1).
+
+**Root cause identified — Anchoring Bias:**
+- Guided agent runs 28% fewer test cycles (2.9 vs 3.7 bash)
+- Pre-given hints prevent test-driven discovery
+- Agent trusts guidance instead of building causal understanding from errors
+- Less testing → less validation → worse fixes
+
+### Key Findings (Updated)
+
+1. **Navigation guidance HURTS performance by 37-42%** — not neutral, actively harmful
+2. **Anchoring bias mechanism:** hints reduce test-driven discovery behavior
+3. **Test cycles for discovery (good) vs test cycles for validation (bad)** — resolves the paradox with error recovery experiment
+4. **Implication for RAG-in-agents:** Retrieved context can anchor agents away from correct solutions
+
+### Methodology Lessons
+
+| Attempt | What Failed | Fix Applied |
+|---------|------------|-------------|
+| v1 | 0% both (too hard) | More turns (v2) |
+| v2 | 70%/80% (too easy baseline) | Harder misleading-error tasks (v4) |
+| v3 | 0% both (too tight) | More turns (v4) |
+| v4 | Noisy guidance confound | Focused ~100 tok prompt (v5) |
+| **v5** | **N/A — clean result** | **Guidance hurts -37%, anchoring bias confirmed** |
 
 ---
 
@@ -569,9 +602,11 @@ This experiment confirmed the meta-pattern: **the powerful lever is behavioral i
 | Context Efficiency v1 | 1 | 10 | 20 |
 | Context Efficiency v2 | 4 | 5 | 40 |
 | Context Efficiency v3 | 3 | 10 | 60 |
-| **Total** | | | **440 trials** |
+| Context Efficiency v4 | 4 | 8 | 64 |
+| Context Efficiency v5 | 4 | 8 | 64 |
+| **Total** | | | **568 trials** |
 
-### Updated Cost (~$17 USD total)
+### Updated Cost (~$22 USD total)
 
 ---
 
@@ -589,5 +624,7 @@ This experiment confirmed the meta-pattern: **the powerful lever is behavioral i
 | `experiments/context_efficiency_v3.py` | v3: Extreme pressure, exact bug locations, max_turns=4 |
 | `reports/2026-03-21-compute-allocation-strategy.md` | Final report for compute allocation experiments |
 | `reports/2026-03-21-error-recovery-strategy.md` | Final report for error recovery experiments |
-| `reports/2026-03-21-context-efficiency.md` | Final report for context efficiency experiments |
+| `experiments/context_efficiency_v4.py` | v4: Calibrated, misleading errors, noisy guidance |
+| `experiments/context_efficiency_v5.py` | v5: Same tasks, focused ~100 token guidance |
+| `reports/2026-03-21-context-efficiency.md` | Final report: guidance hurts -37 to -42% |
 | `reports/2026-03-21-experiment-flow-log.md` | This document — full lab notebook |
