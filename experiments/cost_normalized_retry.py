@@ -192,6 +192,6 @@ experiment = Experiment(
         ),
     ],
     setup_files=SETUP_FILES,
-    num_samples=3,  # haiku gets 3 shots, sonnet gets 3 shots. Compare pass@3 vs pass@1.
+    num_samples=5,  # haiku gets 3 shots, sonnet gets 3 shots. Compare pass@3 vs pass@1.
     tags=["cost-normalized", "retry-strategy", "production-routing"],
 )

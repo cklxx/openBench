@@ -1,0 +1,155 @@
+{
+  "run_id": "7cba884c-65ad-4854-ae4f-1ff4ebb6d5ac",
+  "experiment": {
+    "name": "scaffold_beats_model__haiku_optimized_vs_sonnet_naive",
+    "description": "Holy grail: haiku+optimized scaffold vs sonnet+naive scaffold. 8 tasks, n=5. Tests whether workflow > model capability.",
+    "diff": {
+      "field": "system_prompt",
+      "description": "haiku_optimized vs sonnet_naive"
+    },
+    "agent_a": {
+      "name": "haiku_optimized",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "You are a senior developer fixing bugs and implementing features.\n\nWORKFLOW:\n1. Read relevant files to understand context before making changes\n2. Run tests FIRST to see current state\n3. Make minimal, precise edits\n4. Run tests AGAIN to verify your changes\n5. If tests fail, read the error carefully and fix\n\n## Example 1: Fixing a logic bug\nTask: \"Fix the bug in calculator.py\"\n1. Bash: python test_calc.py → see AssertionError on line 5\n2. Read calculator.py → find the logic error in add()\n3. Edit calculator.py → fix the specific line\n4. Bash: python test_calc.py → all pass\n\n## Example 2: Adding a feature\nTask: \"Add a delete method to UserStore\"\n1. Read user_store.py → understand existing API\n2. Read test_user_store.py → see what's expected\n3. Edit user_store.py → add delete() method following existing patterns\n4. Bash: python test_user_store.py → verify\n\nKEY: Read before edit. Test before and after. Minimal changes only.\n",
+      "allowed_tools": [
+        "Read",
+        "Write",
+        "Bash",
+        "Glob",
+        "Edit"
+      ],
+      "max_turns": 20,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "sonnet_naive",
+      "model": "claude-sonnet-4-6",
+      "system_prompt": null,
+      "allowed_tools": [
+        "Read",
+        "Write",
+        "Bash",
+        "Glob",
+        "Edit"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t1/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "easy",
+        "tags": [
+          "logic-inversion"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t2/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "easy",
+        "tags": [
+          "sort-direction"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t3/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "missing-guard"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t4/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "hard",
+        "tags": [
+          "cofactor-sign"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t5/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "hard",
+        "tags": [
+          "priority-topo-sort"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t6/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "eviction-missing"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t7/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "falsy-value"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t8/. Run the test to verify.",
+        "expected": "PASSED",
+        "difficulty": "hard",
+        "tags": [
+          "impossible-cost"
+        ],
+        "check_fn": "\"passed\" in output.lower()"
+      }
+    ],
+    "tags": [
+      "scaffold-vs-model",
+      "holy-grail",
+      "workflow-optimization",
+      "tournament",
+      "scaffold_beats_model"
+    ],
+    "num_samples": 5,
+    "setup_files": {
+      "tasks/t1/math_utils.py": "def gcd(a, b):\n    \"\"\"Greatest common divisor using Euclidean algorithm.\"\"\"\n    while b:\n        a, b = b, a % b\n    return a\n\ndef lcm(a, b):\n    \"\"\"Least common multiple.\"\"\"\n    return a * b // gcd(a, b)\n\ndef is_prime(n):\n    \"\"\"Check if n is prime.\"\"\"\n    if n < 2:\n        return False\n    for i in range(2, int(n**0.5) + 1):\n        if n % i == 0:\n            return True  # Bug: should return False\n    return True  # Bug: should return True only if no divisor found (logic inverted)\n",
+      "tasks/t1/test_math.py": "from math_utils import gcd, lcm, is_prime\nassert gcd(12, 8) == 4\nassert lcm(4, 6) == 12\nassert is_prime(7) == True\nassert is_prime(4) == False\nassert is_prime(1) == False\nassert is_prime(2) == True\nassert is_prime(97) == True\nassert is_prime(100) == False\nprint(\"test_math: PASSED\")\n",
+      "tasks/t2/text_stats.py": "def word_frequency(text):\n    \"\"\"Return dict of word -> count, case-insensitive.\"\"\"\n    words = text.lower().split()\n    freq = {}\n    for w in words:\n        w = w.strip(\".,!?;:'\"\")\n        freq[w] = freq.get(w, 0) + 1\n    return freq\n\ndef top_n_words(text, n=5):\n    \"\"\"Return top N most frequent words as list of (word, count).\"\"\"\n    freq = word_frequency(text)\n    sorted_words = sorted(freq.items(), key=lambda x: x[1])  # Bug: should be reverse=True\n    return sorted_words[:n]\n\ndef sentence_count(text):\n    \"\"\"Count sentences (split by . ! ?).\"\"\"\n    import re\n    sentences = re.split(r'[.!?]+', text)\n    return len([s for s in sentences if s.strip()])\n",
+      "tasks/t2/test_text.py": "from text_stats import word_frequency, top_n_words, sentence_count\nfreq = word_frequency(\"the cat sat on the mat\")\nassert freq[\"the\"] == 2\ntop = top_n_words(\"the cat sat on the mat the\", 2)\nassert top[0][0] == \"the\" and top[0][1] == 3, f\"Top word wrong: {top}\"\nassert sentence_count(\"Hello. World! How?\") == 3\nprint(\"test_text: PASSED\")\n",
+      "tasks/t3/stack.py": "class Stack:\n    def __init__(self, max_size=None):\n        self._items = []\n        self._max_size = max_size\n\n    def push(self, item):\n        if self._max_size and len(self._items) >= self._max_size:\n            raise OverflowError(\"Stack is full\")\n        self._items.append(item)\n\n    def pop(self):\n        return self._items.pop()  # Bug: no empty check\n\n    def peek(self):\n        return self._items[-1]  # Bug: no empty check\n\n    def is_empty(self):\n        return len(self._items) == 0\n\n    def size(self):\n        return len(self._items)\n",
+      "tasks/t3/test_stack.py": "from stack import Stack\ns = Stack()\nassert s.is_empty()\ns.push(1); s.push(2); s.push(3)\nassert s.size() == 3\nassert s.peek() == 3\nassert s.pop() == 3\nassert s.size() == 2\n# Empty stack operations should raise IndexError\ntry:\n    Stack().pop()\n    assert False, \"Should raise IndexError\"\nexcept IndexError:\n    pass\ntry:\n    Stack().peek()\n    assert False, \"Should raise IndexError\"\nexcept IndexError:\n    pass\n# Max size\nms = Stack(max_size=2)\nms.push(1); ms.push(2)\ntry:\n    ms.push(3)\n    assert False, \"Should raise OverflowError\"\nexcept OverflowError:\n    pass\nprint(\"test_stack: PASSED\")\n",
+      "tasks/t4/matrix.py": "def multiply(a, b):\n    \"\"\"Multiply two matrices.\"\"\"\n    rows_a, cols_a = len(a), len(a[0])\n    rows_b, cols_b = len(b), len(b[0])\n    if cols_a != rows_b:\n        raise ValueError(\"Incompatible dimensions\")\n    result = [[0] * cols_b for _ in range(rows_a)]\n    for i in range(rows_a):\n        for j in range(cols_b):\n            for k in range(cols_a):\n                result[i][j] += a[i][k] * b[k][j]\n    return result\n\ndef transpose(m):\n    \"\"\"Transpose a matrix.\"\"\"\n    if not m:\n        return []\n    return [[m[j][i] for j in range(len(m))] for i in range(len(m[0]))]\n\ndef determinant(m):\n    \"\"\"Calculate determinant of a square matrix.\"\"\"\n    n = len(m)\n    if n == 1:\n        return m[0][0]\n    if n == 2:\n        return m[0][0] * m[1][1] - m[0][1] * m[1][0]\n    det = 0\n    for j in range(n):\n        minor = [row[:j] + row[j+1:] for row in m[1:]]\n        # Bug: cofactor sign alternation wrong\n        det += m[0][j] * determinant(minor)  # Missing (-1)**j\n    return det\n",
+      "tasks/t4/test_matrix.py": "from matrix import multiply, transpose, determinant\n# Multiply\nassert multiply([[1,2],[3,4]], [[5,6],[7,8]]) == [[19,22],[43,50]]\n# Transpose\nassert transpose([[1,2,3],[4,5,6]]) == [[1,4],[2,5],[3,6]]\n# Determinant\nassert determinant([[1]]) == 1\nassert determinant([[1,2],[3,4]]) == -2\nassert determinant([[1,0,0],[0,1,0],[0,0,1]]) == 1  # Identity\nassert determinant([[2,1,1],[1,3,2],[1,0,0]]) == 1\nprint(\"test_matrix: PASSED\")\n",
+      "tasks/t5/scheduler.py": "\"\"\"Job scheduler with priorities and dependencies.\"\"\"\nfrom collections import deque\n\nclass Job:\n    def __init__(self, name, priority=0, deps=None):\n        self.name = name\n        self.priority = priority\n        self.deps = deps or []\n        self.status = \"pending\"\n\nclass Scheduler:\n    def __init__(self):\n        self.jobs = {}\n\n    def add_job(self, job):\n        self.jobs[job.name] = job\n\n    def _topo_sort(self):\n        \"\"\"Topological sort respecting dependencies.\"\"\"\n        in_degree = {name: 0 for name in self.jobs}\n        for job in self.jobs.values():\n            for dep in job.deps:\n                in_degree[job.name] = in_degree.get(job.name, 0) + 1\n\n        queue = deque()\n        for name, degree in in_degree.items():\n            if degree == 0:\n                queue.append(name)\n\n        # Bug: doesn't sort by priority within same dependency level\n        order = []\n        while queue:\n            name = queue.popleft()  # Should pick highest priority from queue\n            order.append(name)\n            for job in self.jobs.values():\n                if name in job.deps:\n                    in_degree[job.name] -= 1\n                    if in_degree[job.name] == 0:\n                        queue.append(job.name)\n        return order\n\n    def run(self):\n        order = self._topo_sort()\n        results = []\n        for name in order:\n            self.jobs[name].status = \"done\"\n            results.append(name)\n        return results\n",
+      "tasks/t5/test_scheduler.py": "from scheduler import Scheduler, Job\n# Basic priority ordering (no deps)\ns = Scheduler()\ns.add_job(Job(\"low\", priority=1))\ns.add_job(Job(\"high\", priority=3))\ns.add_job(Job(\"mid\", priority=2))\nresult = s.run()\nassert result == [\"high\", \"mid\", \"low\"], f\"Priority order wrong: {result}\"\n\n# Dependencies override priority\ns2 = Scheduler()\ns2.add_job(Job(\"B\", priority=3, deps=[\"A\"]))\ns2.add_job(Job(\"A\", priority=1))\nresult2 = s2.run()\nassert result2.index(\"A\") < result2.index(\"B\"), f\"Deps wrong: {result2}\"\n\n# Mixed deps + priority\ns3 = Scheduler()\ns3.add_job(Job(\"D\", priority=1, deps=[\"B\", \"C\"]))\ns3.add_job(Job(\"C\", priority=2, deps=[\"A\"]))\ns3.add_job(Job(\"B\", priority=3, deps=[\"A\"]))\ns3.add_job(Job(\"A\", priority=4))\nresult3 = s3.run()\nassert result3[0] == \"A\"\nassert result3[-1] == \"D\"\n# B has higher priority than C, both depend on A\nassert result3.index(\"B\") < result3.index(\"C\"), f\"Priority tiebreak wrong: {result3}\"\nprint(\"test_scheduler: PASSED\")\n",
+      "tasks/t6/cache.py": "\"\"\"TTL cache with size limit and statistics.\"\"\"\nimport time\n\nclass TTLCache:\n    def __init__(self, max_size=100, default_ttl=60):\n        self.max_size = max_size\n        self.default_ttl = default_ttl\n        self._store = {}  # key -> (value, expires_at)\n        self._hits = 0\n        self._misses = 0\n\n    def get(self, key, current_time=None):\n        now = current_time or time.time()\n        if key in self._store:\n            value, expires = self._store[key]\n            if now < expires:\n                self._hits += 1\n                return value\n            else:\n                del self._store[key]\n        self._misses += 1\n        return None\n\n    def set(self, key, value, ttl=None, current_time=None):\n        now = current_time or time.time()\n        # Bug: doesn't evict when at max_size\n        self._store[key] = (value, now + (ttl or self.default_ttl))\n\n    def delete(self, key):\n        self._store.pop(key, None)\n\n    def clear(self):\n        self._store.clear()\n\n    def stats(self):\n        total = self._hits + self._misses\n        return {\n            \"size\": len(self._store),\n            \"hits\": self._hits,\n            \"misses\": self._misses,\n            \"hit_rate\": self._hits / total if total > 0 else 0.0,\n        }\n",
+      "tasks/t6/test_cache.py": "from cache import TTLCache\nc = TTLCache(max_size=3, default_ttl=10)\nc.set(\"a\", 1, current_time=100)\nc.set(\"b\", 2, current_time=100)\nc.set(\"c\", 3, current_time=100)\nassert c.get(\"a\", current_time=105) == 1\nassert c.get(\"b\", current_time=105) == 2\n# At max_size, adding new should evict oldest\nc.set(\"d\", 4, current_time=106)\nassert len(c._store) <= 3, f\"Over max_size: {len(c._store)}\"\n# TTL expiry\nassert c.get(\"a\", current_time=115) is None  # expired\n# Stats\ns = c.stats()\nassert s[\"hits\"] >= 2\nassert s[\"misses\"] >= 1\nassert 0 <= s[\"hit_rate\"] <= 1\nprint(\"test_cache: PASSED\")\n",
+      "tasks/t7/json_query.py": "\"\"\"Simple JSON query engine — supports dot notation and array indexing.\"\"\"\n\ndef query(data, path):\n    \"\"\"Query nested JSON data with dot notation.\n    Examples:\n        query({\"a\": {\"b\": 1}}, \"a.b\") → 1\n        query({\"items\": [1,2,3]}, \"items[1]\") → 2\n        query({\"a\": 1}, \"b\") → None (missing key)\n    \"\"\"\n    parts = _parse_path(path)\n    current = data\n    for part in parts:\n        if isinstance(part, int):\n            # Array index\n            if not isinstance(current, list) or part >= len(current):\n                return None\n            current = current[part]\n        elif isinstance(part, str):\n            if not isinstance(current, dict):\n                return None\n            current = current.get(part)  # Bug: doesn't handle None vs missing key\n            if current is None:\n                return None  # Bug: can't distinguish null value from missing key\n        else:\n            return None\n    return current\n\ndef _parse_path(path):\n    \"\"\"Parse 'a.b[0].c' into ['a', 'b', 0, 'c'].\"\"\"\n    parts = []\n    current = \"\"\n    for ch in path:\n        if ch == '.':\n            if current:\n                parts.append(current)\n                current = \"\"\n        elif ch == '[':\n            if current:\n                parts.append(current)\n                current = \"\"\n        elif ch == ']':\n            if current.isdigit():\n                parts.append(int(current))\n            current = \"\"\n        else:\n            current += ch\n    if current:\n        parts.append(current)\n    return parts\n",
+      "tasks/t7/test_json_query.py": "from json_query import query\ndata = {\n    \"user\": {\"name\": \"Alice\", \"age\": 30, \"active\": None},\n    \"items\": [{\"id\": 1}, {\"id\": 2}, {\"id\": 3}],\n    \"count\": 0,\n}\nassert query(data, \"user.name\") == \"Alice\"\nassert query(data, \"items[1].id\") == 2\nassert query(data, \"count\") == 0  # Falsy but exists\nassert query(data, \"missing\") is None\n# Bug trigger: None value vs missing key\nassert query(data, \"user.active\") is None  # Value IS None (exists)\n# This test distinguishes \"key exists with None\" from \"key missing\":\nassert query(data, \"user.nonexistent\") is None  # Key missing\n# Both return None — that's ambiguous but acceptable.\n# The REAL bug: falsy values\nassert query(data, \"count\") == 0, f\"Falsy value lost: {query(data, 'count')}\"\nprint(\"test_json_query: PASSED\")\n",
+      "tasks/t8/rate_limiter.py": "\"\"\"Token bucket rate limiter.\"\"\"\nimport time\n\nclass RateLimiter:\n    def __init__(self, rate, burst, current_time=None):\n        \"\"\"\n        rate: tokens per second\n        burst: maximum tokens (bucket size)\n        \"\"\"\n        self.rate = rate\n        self.burst = burst\n        self.tokens = burst  # Start full\n        self.last_refill = current_time or time.time()\n\n    def _refill(self, current_time=None):\n        now = current_time or time.time()\n        elapsed = now - self.last_refill\n        new_tokens = elapsed * self.rate\n        self.tokens = min(self.burst, self.tokens + new_tokens)\n        self.last_refill = now\n\n    def allow(self, cost=1, current_time=None):\n        \"\"\"Return True if request is allowed, consuming `cost` tokens.\"\"\"\n        self._refill(current_time)\n        if self.tokens >= cost:\n            self.tokens -= cost\n            return True\n        return False\n\n    def wait_time(self, cost=1, current_time=None):\n        \"\"\"Return seconds to wait before `cost` tokens are available.\"\"\"\n        self._refill(current_time)\n        if self.tokens >= cost:\n            return 0.0\n        deficit = cost - self.tokens\n        return deficit / self.rate  # Bug: doesn't account for burst cap\n",
+      "tasks/t8/test_limiter.py": "from rate_limiter import RateLimiter\n# 10 tokens/sec, burst of 5\nrl = RateLimiter(rate=10, burst=5, current_time=0)\n# Should allow 5 requests immediately (burst)\nfor _ in range(5):\n    assert rl.allow(current_time=0) == True\n# 6th should fail\nassert rl.allow(current_time=0) == False\n# After 0.5 sec, 5 new tokens\nassert rl.allow(current_time=0.5) == True\n# Wait time calculation\nrl2 = RateLimiter(rate=10, burst=5, current_time=0)\nfor _ in range(5):\n    rl2.allow(current_time=0)\nwt = rl2.wait_time(cost=3, current_time=0)\nassert abs(wt - 0.3) < 0.01, f\"Wait time wrong: {wt}\"\n# Large cost exceeding burst should return correct wait (even if impossible)\nrl3 = RateLimiter(rate=10, burst=5, current_time=0)\nfor _ in range(5):\n    rl3.allow(current_time=0)\nwt2 = rl3.wait_time(cost=10, current_time=0)\n# 10 tokens needed, 0 available, rate 10/sec = 1 sec wait\n# BUT burst is only 5, so 10 tokens can NEVER be accumulated\n# This should either return infinity or raise an error\nassert wt2 > 100 or wt2 == float(\"inf\"), f\"Impossible cost should signal error: {wt2}\"\nprint(\"test_limiter: PASSED\")\n"
+    },
+    "setup_script": null
+  },
+  "started_at": "2026-03-21T05:46:29.514172+00:00",
+  "finished_at": "2026-03-21T06:19:07.184274+00:00",
+  "num_tasks": 8,
+  "trials_a_count": 40,
+  "trials_b_count": 40
+}
