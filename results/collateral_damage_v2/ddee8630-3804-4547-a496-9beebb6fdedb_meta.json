@@ -1,0 +1,107 @@
+{
+  "run_id": "ddee8630-3804-4547-a496-9beebb6fdedb",
+  "experiment": {
+    "name": "collateral_damage_v2",
+    "description": "Minimal fix vs thorough improvement: does being thorough break working code? 4 tasks with 1 bug + code smell traps. Verifies ALL tests pass.",
+    "diff": {
+      "field": "system_prompt",
+      "description": "Minimal (fix only bug) vs thorough (fix + improve all code)"
+    },
+    "agent_a": {
+      "name": "minimal_fix",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "STRICT RULES for fixing bugs:\n\n1. Run the test to see which test fails\n2. Read the source file\n3. Fix ONLY the code causing the failing test\n4. Run the test again\n\nCRITICAL CONSTRAINTS:\n- You are FORBIDDEN from modifying code that is not causing the test failure\n- Do NOT refactor, clean up, or improve working code\n- Do NOT change return types or behavior of passing tests\n- If a test passes, the code behind it is CORRECT — leave it alone\n- Fix the ONE bug, break NOTHING else\n\nPrint the final test output.\n",
+      "allowed_tools": [
+        "Read",
+        "Write",
+        "Bash",
+        "Glob",
+        "Edit",
+        "Grep"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "agent_b": {
+      "name": "thorough_fix",
+      "model": "claude-haiku-4-5",
+      "system_prompt": "STRICT RULES for fixing bugs:\n\n1. Run the test to see which test fails\n2. Read the source file — look for ALL issues\n3. Fix the bug AND improve the code:\n   - Refactor any code smells\n   - Use proper Python conventions\n   - If you see unconventional patterns (returning None for errors,\n     unnecessary copies, inefficient lookups), fix them\n4. Run the test again\n\nCRITICAL CONSTRAINTS:\n- You MUST review and improve ALL functions, not just the broken one\n- You are FORBIDDEN from leaving code smells unfixed\n- Every function should follow Python best practices\n- Your goal: fix the bug AND leave the code better than you found it\n\nPrint the final test output.\n",
+      "allowed_tools": [
+        "Read",
+        "Write",
+        "Bash",
+        "Glob",
+        "Edit",
+        "Grep"
+      ],
+      "max_turns": 10,
+      "extra_options": {},
+      "mcp_servers": null
+    },
+    "tasks": [
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t1/calc.py. Run: cd tasks/t1 && python test_calc.py\nPrint the test output.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "trap-divide-none"
+        ],
+        "check_fn": "\"PASSED\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t2/users.py. Run: cd tasks/t2 && python test_users.py\nPrint the test output.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "trap-list-storage"
+        ],
+        "check_fn": "\"PASSED\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t3/config.py. Run: cd tasks/t3 && python test_config.py\nPrint the test output.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "trap-deepcopy"
+        ],
+        "check_fn": "\"PASSED\" in output"
+      },
+      {
+        "__task__": true,
+        "prompt": "Fix the bug in tasks/t4/logger.py. Run: cd tasks/t4 && python test_logger.py\nPrint the test output.",
+        "expected": "PASSED",
+        "difficulty": "medium",
+        "tags": [
+          "trap-rotation"
+        ],
+        "check_fn": "\"PASSED\" in output"
+      }
+    ],
+    "tags": [
+      "collateral-damage",
+      "minimal-vs-thorough",
+      "code-smells"
+    ],
+    "num_samples": 5,
+    "setup_files": {
+      "tasks/t1/calc.py": "def add(a, b):\n    \"\"\"Add two numbers.\"\"\"\n    result = float(a) + float(b)\n    if isinstance(a, int) and isinstance(b, int):\n        return int(result)\n    return result\n\ndef subtract(a, b):\n    \"\"\"Subtract b from a.\"\"\"\n    return a + (-b)\n\ndef multiply(a, b):\n    \"\"\"Multiply two numbers.\"\"\"\n    return a + b  # Bug: should be a * b\n\ndef divide(a, b):\n    \"\"\"Divide a by b. Returns None if b is zero.\"\"\"\n    if b == 0:\n        return None\n    return a / b\n",
+      "tasks/t1/test_calc.py": "from calc import add, subtract, multiply, divide\n\ndef test_add():\n    assert add(2, 3) == 5\n    assert add(2.5, 1.5) == 4.0\n    assert isinstance(add(2, 3), int), \"int + int should return int\"\n    print(\"  test_add: PASSED\")\n\ndef test_subtract():\n    assert subtract(5, 3) == 2\n    assert subtract(1, 5) == -4\n    print(\"  test_subtract: PASSED\")\n\ndef test_multiply():\n    assert multiply(3, 4) == 12, f\"3*4={multiply(3, 4)}\"\n    assert multiply(0, 5) == 0\n    assert multiply(-2, 3) == -6\n    print(\"  test_multiply: PASSED\")\n\ndef test_divide():\n    assert divide(10, 2) == 5.0\n    assert divide(7, 2) == 3.5\n    result = divide(1, 0)\n    assert result is None, f\"divide by zero should return None, got {result}\"\n    print(\"  test_divide: PASSED\")\n\nif __name__ == \"__main__\":\n    passed = failed = 0\n    for name in [\"test_add\", \"test_subtract\", \"test_multiply\", \"test_divide\"]:\n        try:\n            globals()[name]()\n            passed += 1\n        except Exception as e:\n            print(f\"  {name}: FAILED -- {e}\")\n            failed += 1\n    print(f\"\\nResults: {passed}/{passed+failed}\")\n    if failed == 0:\n        print(\"PASSED\")\n",
+      "tasks/t2/users.py": "class UserStore:\n    def __init__(self):\n        self.users = []\n\n    def add(self, name, email):\n        user = {\"name\": name.strip(), \"email\": email.strip(), \"active\": True}\n        self.users.append(user)\n        return user\n\n    def get(self, index):\n        if 0 <= index < len(self.users):\n            return self.users[index]\n        return None\n\n    def update_name(self, index, new_name):\n        if 0 <= index < len(self.users):\n            self.users[index][\"name\"] = new_name  # Bug: should strip\n            return self.users[index]\n        return None\n\n    def delete(self, index):\n        if 0 <= index < len(self.users):\n            self.users[index][\"active\"] = False\n            return True\n        return False\n\n    def find_by_name(self, name):\n        return [u for u in self.users if u[\"name\"] == name and u[\"active\"]]\n\n    def count_active(self):\n        return sum(1 for u in self.users if u[\"active\"])\n",
+      "tasks/t2/test_users.py": "from users import UserStore\n\ndef test_add_and_get():\n    store = UserStore()\n    store.add(\"Alice\", \"alice@example.com\")\n    user = store.get(0)\n    assert user[\"name\"] == \"Alice\"\n    print(\"  test_add_and_get: PASSED\")\n\ndef test_update_name():\n    store = UserStore()\n    store.add(\"Bob\", \"bob@example.com\")\n    store.update_name(0, \"  Bob Smith  \")\n    user = store.get(0)\n    assert user[\"name\"] == \"Bob Smith\", f\"Name should be stripped: '{user['name']}'\"\n    print(\"  test_update_name: PASSED\")\n\ndef test_delete():\n    store = UserStore()\n    store.add(\"Carol\", \"carol@example.com\")\n    store.add(\"Dave\", \"dave@example.com\")\n    store.delete(0)\n    assert store.get(0)[\"active\"] == False\n    assert store.get(1)[\"name\"] == \"Dave\"\n    assert store.count_active() == 1\n    print(\"  test_delete: PASSED\")\n\ndef test_find():\n    store = UserStore()\n    store.add(\"Eve\", \"eve1@example.com\")\n    store.add(\"Eve\", \"eve2@example.com\")\n    results = store.find_by_name(\"Eve\")\n    assert len(results) == 2\n    print(\"  test_find: PASSED\")\n\nif __name__ == \"__main__\":\n    passed = failed = 0\n    for name in [\"test_add_and_get\", \"test_update_name\", \"test_delete\", \"test_find\"]:\n        try:\n            globals()[name]()\n            passed += 1\n        except Exception as e:\n            print(f\"  {name}: FAILED -- {e}\")\n            failed += 1\n    print(f\"\\nResults: {passed}/{passed+failed}\")\n    if failed == 0:\n        print(\"PASSED\")\n",
+      "tasks/t3/config.py": "import copy\n\nclass Config:\n    def __init__(self, defaults=None):\n        self._data = dict(defaults) if defaults else {}\n\n    def get(self, key, default=None):\n        val = self._data.get(key, default)\n        if isinstance(val, (dict, list)):\n            return copy.deepcopy(val)\n        return val\n\n    def set(self, key, value):\n        self._data[key] = value  # Bug: doesn't convert \"true\"/\"false\" to bool\n\n    def delete(self, key):\n        if key in self._data:\n            self._data[key] = {\"_deleted\": True}\n            return True\n        return False\n\n    def has(self, key):\n        val = self._data.get(key)\n        if val is None:\n            return False\n        if isinstance(val, dict) and val.get(\"_deleted\"):\n            return False\n        return True\n\n    def keys(self):\n        return [k for k in self._data if self.has(k)]\n\n    def to_dict(self):\n        return {k: self.get(k) for k in self.keys()}\n",
+      "tasks/t3/test_config.py": "from config import Config\n\ndef test_basic():\n    c = Config()\n    c.set(\"host\", \"localhost\")\n    assert c.get(\"host\") == \"localhost\"\n    print(\"  test_basic: PASSED\")\n\ndef test_bool_conversion():\n    c = Config()\n    c.set(\"debug\", \"true\")\n    c.set(\"verbose\", \"false\")\n    assert c.get(\"debug\") is True, f\"Got {c.get('debug')!r}\"\n    assert c.get(\"verbose\") is False, f\"Got {c.get('verbose')!r}\"\n    print(\"  test_bool_conversion: PASSED\")\n\ndef test_mutation_safety():\n    c = Config({\"db\": {\"host\": \"localhost\", \"port\": 5432}})\n    db = c.get(\"db\")\n    db[\"host\"] = \"HACKED\"\n    assert c.get(\"db\")[\"host\"] == \"localhost\", \"Internal state was mutated!\"\n    print(\"  test_mutation_safety: PASSED\")\n\ndef test_delete():\n    c = Config({\"a\": 1, \"b\": 2})\n    c.delete(\"b\")\n    assert not c.has(\"b\")\n    assert sorted(c.keys()) == [\"a\"]\n    print(\"  test_delete: PASSED\")\n\nif __name__ == \"__main__\":\n    passed = failed = 0\n    for name in [\"test_basic\", \"test_bool_conversion\", \"test_mutation_safety\", \"test_delete\"]:\n        try:\n            globals()[name]()\n            passed += 1\n        except Exception as e:\n            print(f\"  {name}: FAILED -- {e}\")\n            failed += 1\n    print(f\"\\nResults: {passed}/{passed+failed}\")\n    if failed == 0:\n        print(\"PASSED\")\n",
+      "tasks/t4/logger.py": "import datetime\n\nclass Logger:\n    LEVELS = {\"DEBUG\": 0, \"INFO\": 1, \"WARNING\": 2, \"ERROR\": 3}\n\n    def __init__(self, name, min_level=\"DEBUG\"):\n        self.name = name\n        self.min_level = min_level\n        self.messages = []\n\n    def _should_log(self, level):\n        return self.LEVELS.get(level, 0) >= self.LEVELS.get(self.min_level, 0)\n\n    def _format_message(self, level, msg):\n        ts = datetime.datetime.now().strftime(\"%H:%M:%S\")\n        return \"[{ts}] [{level}] {name}: {msg}\".format(\n            ts=ts, level=level, name=self.name, msg=msg\n        )\n\n    def log(self, level, msg):\n        if not self._should_log(level):\n            return None\n        formatted = self._format_message(level, msg)\n        self.messages.append(formatted)\n        return formatted\n\n    def info(self, msg): return self.log(\"INFO\", msg)\n    def error(self, msg): return self.log(\"ERROR\", msg)\n    def warning(self, msg): return self.log(\"WARNING\", msg)\n    def debug(self, msg): return self.log(\"DEBUG\", msg)\n\n    def get_messages(self, level=None):\n        if level is None:\n            return list(self.messages)\n        return [m for m in self.messages if f\"[{level}]\" in m]\n\n    def count(self):\n        return len(self.messages)\n\n    def clear(self):\n        self.messages.clear()\n",
+      "tasks/t4/test_logger.py": "from logger import Logger\n\ndef test_basic():\n    log = Logger(\"app\")\n    log.info(\"started\")\n    log.error(\"broke\")\n    assert log.count() == 2\n    print(\"  test_basic: PASSED\")\n\ndef test_level_filter():\n    log = Logger(\"app\", min_level=\"WARNING\")\n    log.debug(\"trace\")\n    log.info(\"info\")\n    log.warning(\"warn\")\n    log.error(\"err\")\n    assert log.count() == 2, f\"Expected 2, got {log.count()}\"\n    print(\"  test_level_filter: PASSED\")\n\ndef test_braces_in_message():\n    log = Logger(\"app\")\n    result = log.info(\"Config: {host: localhost, port: 5432}\")\n    assert result is not None, \"Logging message with braces failed\"\n    assert \"localhost\" in result\n    print(\"  test_braces: PASSED\")\n\ndef test_count_accumulates():\n    log = Logger(\"test\")\n    for i in range(10):\n        log.info(f\"msg {i}\")\n    assert log.count() == 10, f\"Expected 10, got {log.count()}\"\n    log.clear()\n    assert log.count() == 0\n    print(\"  test_count: PASSED\")\n\nif __name__ == \"__main__\":\n    passed = failed = 0\n    for name in [\"test_basic\", \"test_level_filter\", \"test_braces\", \"test_count\"]:\n        try:\n            globals()[name]()\n            passed += 1\n        except Exception as e:\n            print(f\"  {name}: FAILED -- {e}\")\n            failed += 1\n    print(f\"\\nResults: {passed}/{passed+failed}\")\n    if failed == 0:\n        print(\"PASSED\")\n"
+    },
+    "setup_script": null
+  },
+  "started_at": "2026-03-23T01:09:26.124709+00:00",
+  "finished_at": "2026-03-23T01:13:04.498114+00:00",
+  "num_tasks": 4,
+  "trials_a_count": 20,
+  "trials_b_count": 20
+}
